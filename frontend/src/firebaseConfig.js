@@ -1,13 +1,13 @@
 import { initializeApp } from "firebase/app";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDFT0DuJPC9EWUq67c4PeyFaZAZk4eH-qQ",
-  authDomain: "recess-8a2bc.firebaseapp.com",
-  projectId: "recess-8a2bc",
-  storageBucket: "recess-8a2bc.firebasestorage.app",
-  messagingSenderId: "794241899425",
-  appId: "1:794241899425:web:4c152b1bf8862cf830c9e0",
-  measurementId: "G-D99TCP43F5",
+  apiKey: "AIzaSyCvfIAB8Howm55AmUEntcfXBHAeCy8NEY4",
+  authDomain: "omnis-9911e.firebaseapp.com",
+  projectId: "omnis-9911e",
+  storageBucket: "omnis-9911e.firebasestorage.app",
+  messagingSenderId: "19567190698",
+  appId: "1:19567190698:web:d06d4e9c13abfe55d266d3",
+  measurementId: "G-7PFDYZDRHE",
 };
 
 // Initialize Firebase
