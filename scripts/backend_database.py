@@ -38,7 +38,9 @@ def ensure_table_exists(cursor, user_name):
             chunk_url VARCHAR(1000),
             chunk_text VARCHAR(10000),
             embedding VECTOR(DOUBLE, 1536),
-            original_file_url VARCHAR(1000)
+            original_file_url VARCHAR(1000),
+            file_type VARCHAR(1000),
+            file_name VARCHAR(1000)
         )
     """)
     return True
@@ -54,7 +56,7 @@ def check_chunk_exists(cursor, user_name, chunk_url):
     return cursor.fetchone()[0] > 0
 
 
-def add_embeddings(chunk_url, chunk_text, original_file_url, user_name):
+def add_embeddings(chunk_url, chunk_text, original_file_url, user_name, file_type, file_name):
     try:
         setup_openai_key()
         conn = setup_database_connection()
@@ -71,11 +73,11 @@ def add_embeddings(chunk_url, chunk_text, original_file_url, user_name):
 
         sql = f"""
             INSERT INTO {table_name}.classes
-            (chunk_url, chunk_text, embedding, original_file_url)
+            (chunk_url, chunk_text, embedding, original_file_url, file_type, file_name)
             VALUES (?, ?, TO_VECTOR(?), ?)
         """
         
-        cursor.execute(sql, [chunk_url, chunk_text, str(embedding), original_file_url])
+        cursor.execute(sql, [chunk_url, chunk_text, str(embedding), original_file_url, file_type, file_name])
         conn.commit()
         
         return {"status": "success", "message": "New embeddings created and stored", "already_exists": False}
@@ -110,6 +112,8 @@ def search_files(search_phrase, user_name, num_results=3):
             SELECT TOP ? chunk_url,
                          chunk_text,
                          original_file_url,
+                         file_type,
+                         file_name,
                          VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) as similarity_score
               FROM {safe_user_name}.classes
              ORDER BY VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) DESC
@@ -121,11 +125,13 @@ def search_files(search_phrase, user_name, num_results=3):
         # 5) Format results
         formatted_results = []
         for row in results:
-            chunk_url, chunk_text, original_file_url, score = row
+            chunk_url, chunk_text, original_file_url, file_type, file_name, score = row
             formatted_results.append({
                 "chunk_url": chunk_url,
                 "chunk_text": chunk_text,
                 "original_file_url": original_file_url,
+                "file_type": file_type,
+                "file_name": file_name,
                 "score": score
             })
 

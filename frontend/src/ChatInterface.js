@@ -295,7 +295,7 @@ const ChatInterface = ({ projectId }) => {
    * Splits the text file into chunks, uploads each chunk to Firebase Storage,
    * and sends each chunk for embedding to the backend.
    */
-  const processFileChunks = async (file, originalFileUrl, isTextOrNot) => {
+  const processFileChunks = async (file, originalFileUrl, isTextOrNot, fileType, originalFileName) => {
     let text = "";
     if (isTextOrNot) {
       text = file;
@@ -344,6 +344,8 @@ const ChatInterface = ({ projectId }) => {
             chunk_text: chunks[i],
             original_file_url: originalFileUrl,
             user_name: safeUserName, // use the space-stripped username
+            file_type: fileType,
+            file_name: originalFileName,
           }),
         });
 
@@ -414,7 +416,10 @@ const ChatInterface = ({ projectId }) => {
       await processFileChunks(
         data["transcript_content"][1],
         originalVideoFileUrl,
-        true
+        true,
+        "video",
+        file["name"].split(".")[0]
+
       );
 
       const video_transcript_with_timestamps_id = uuidv4();
@@ -437,7 +442,9 @@ const ChatInterface = ({ projectId }) => {
       await processFileChunks(
         data["transcript_content"][0],
         originalVideoFileUrl,
-        true
+        true,
+        "video",
+        file["name"].split(".")[0]
       );
 
       // 3. Update UI with new document
@@ -476,7 +483,7 @@ const ChatInterface = ({ projectId }) => {
         const originalFileUrl = await getDownloadURL(originalFileRef);
 
         // 2. Process chunks and store embeddings
-        await processFileChunks(file, originalFileUrl);
+        await processFileChunks(file, originalFileUrl, false, "text",  file["name"].split(".")[0]);
 
         // 3. Update UI with new document
         setDocuments((prev) => [
@@ -536,8 +543,44 @@ const ChatInterface = ({ projectId }) => {
           // 2) Also log just the results for clarity
           console.log("Search results:", data.results);
 
+          //feed sanjay code
+          const response = await fetch("http://localhost:5010/run_identification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: message,
+              top_k_queries: data.results.map(obj => obj.chunk_text),
+              top_k_types: data.results.map(obj => obj.file_type)
+            }),
+          });
+          const data = await response.json();
+
+          const response2 = await fetch("http://localhost:5010/run_generation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: message,
+              top_k_ids: data['top_k_ids']
+            }),
+          });
+          const data2 = await response2.json();
+
+
+          const response3 = await fetch("http://localhost:5010/postprocess_generation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              generated_content: data['answer'],
+              top_k_urls: data.results.map(obj => obj.original_file_url),
+              top_k_names: data.results.map(obj => obj.file_name),
+            }),
+          });
+          const data3 = await response3.json();
+
+
+
           // Update local state with the returned results
-          setSearchResults(data.results);
+          setSearchResults(data3['answer']);
         } else {
           console.error("Search error:", data.message);
         }
