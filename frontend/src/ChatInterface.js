@@ -577,8 +577,9 @@ const ChatInterface = ({ projectId }) => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              transcript_content: data['chunk_text'],
-              file_type: data["file_type"],
+              transcript_content_chunks: search_data.results.map(obj => obj.chunk_text),
+              file_types: search_data.results.map(obj => obj.file_type),
+              question: message,
             }),
           });
           const data4 = await response4.json();
