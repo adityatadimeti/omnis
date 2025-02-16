@@ -515,7 +515,7 @@ const ChatInterface = ({ projectId }) => {
                   handleSearch();
                 }
               }}
-              placeholder="How can Claude help you today?"
+              placeholder="How can Omnis help you today?"
               style={styles.input}
             />
             <label style={styles.iconButton}>
