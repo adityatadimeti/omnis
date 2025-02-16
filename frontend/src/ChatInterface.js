@@ -1,9 +1,19 @@
+// ChatInterface.js
+
+// This component provides a chat-style interface for uploading files,
+// chunking them, embedding them, and then searching across them.
+
+// Existing imports
 import React, { useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from 'uuid';
 
+// Import useAuth so we can access the current user
+import { useAuth } from './AuthContext';
+
+// Base styling object for major layout parts
 const baseStyles = {
   container: {
     display: "flex",
@@ -179,8 +189,15 @@ const baseStyles = {
   },
 };
 
+// Main ChatInterface component
 const ChatInterface = ({ projectId }) => {
+  // Use React Router's navigation
   const navigate = useNavigate();
+
+  // Get the currently logged-in user from AuthContext
+  const { user } = useAuth();
+
+  // Local state variables
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -189,6 +206,7 @@ const ChatInterface = ({ projectId }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
 
+  // Merge base styles with any additional overlays
   const styles = {
     ...baseStyles,
     dropZoneOverlay: {
@@ -227,10 +245,12 @@ const ChatInterface = ({ projectId }) => {
     },
   };
 
+  // Navigates back to the dashboard
   const handleBack = () => {
     navigate('/dashboard');
   };
 
+  // Drag-and-drop event handlers
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -262,22 +282,31 @@ const ChatInterface = ({ projectId }) => {
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
+      // Upload the first file dropped
       await handleFileUpload({ target: { files: [files[0]] } });
     }
   };
 
+  /**
+   * processFileChunks
+   * Splits the text file into chunks, uploads each chunk to Firebase Storage,
+   * and sends each chunk for embedding to the backend.
+   */
   const processFileChunks = async (file, originalFileUrl) => {
+    // Read the entire file text
     const text = await file.text();
     const chunkSize = 1000;
     const words = text.split(/\s+/);
     const chunks = [];
 
+    // Break text into 1000-word chunks
     for (let i = 0; i < words.length; i += chunkSize) {
       chunks.push(words.slice(i, i + chunkSize).join(' '));
     }
 
     const storage = getStorage();
 
+    // Upload each chunk and request embeddings
     for (let i = 0; i < chunks.length; i++) {
       setUploadStatus(`Processing chunk ${i + 1} of ${chunks.length}`);
       
@@ -287,20 +316,26 @@ const ChatInterface = ({ projectId }) => {
       await uploadBytes(chunkRef, chunkBlob);
       const chunkUrl = await getDownloadURL(chunkRef);
 
+      // Send chunk to our backend for embedding
       await fetch('http://localhost:5010/add_embedding', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Align naming for ESLint clarity:
           chunk_url: chunkUrl,
           chunk_text: chunks[i],
-          original_file_url: originalFileUrl
+          original_file_url: originalFileUrl,
+          user_name: user?.displayName || "UnknownUser"
         }),
       });
     }
   };
 
+  /**
+   * handleFileUpload
+   * Called when a file is selected (or dropped).
+   * Uploads the entire file to Firebase, then calls processFileChunks.
+   */
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -312,33 +347,43 @@ const ChatInterface = ({ projectId }) => {
       const storage = getStorage();
       const fileId = uuidv4();
       const fileExtension = file.name.split('.').pop();
+
+      // Upload the original file to Firebase Storage
       const originalFileRef = storageRef(storage, `documents/${fileId}.${fileExtension}`);
-      
       await uploadBytes(originalFileRef, file);
       const originalFileUrl = await getDownloadURL(originalFileRef);
 
+      // Chunk the file and process each chunk
       await processFileChunks(file, originalFileUrl);
 
-      setDocuments(prev => [...prev, {
-        id: fileId,
-        name: file.name,
-        type: fileExtension.toUpperCase(),
-        date: "Just now",
-        size: `${(file.size / 1024).toFixed(1)} KB`,
-        url: originalFileUrl
-      }]);
+      // Keep track of uploaded files in state
+      setDocuments(prev => [
+        ...prev,
+        {
+          id: fileId,
+          name: file.name,
+          type: fileExtension.toUpperCase(),
+          date: "Just now",
+          size: `${(file.size / 1024).toFixed(1)} KB`,
+          url: originalFileUrl
+        }
+      ]);
 
       setUploadStatus('Upload complete!');
-      
     } catch (error) {
       console.error("Error processing file:", error);
       setUploadStatus('Error uploading file');
     } finally {
       setIsLoading(false);
+      // Clear the status message after a short delay
       setTimeout(() => setUploadStatus(''), 3000);
     }
   };
 
+  /**
+   * handleSearch
+   * Sends the user's query to the backend search endpoint.
+   */
   const handleSearch = async () => {
     if (!message.trim()) return;
     
@@ -346,12 +391,12 @@ const ChatInterface = ({ projectId }) => {
     try {
       const response = await fetch('http://localhost:5010/search', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: message,
-          num_results: 3
+          num_results: 3,
+          // Optionally include the user name if needed on the search side
+          user_name: user?.displayName || "UnknownUser"
         }),
       });
 
@@ -366,6 +411,7 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
+  // Render the main component
   return (
     <div
       style={styles.container}
@@ -374,6 +420,7 @@ const ChatInterface = ({ projectId }) => {
       onDragOver={handleDrag}
       onDrop={handleDrop}
     >
+      {/* Overlay for drag-and-drop */}
       <div style={styles.dropZoneOverlay}>
         <div style={styles.dropZoneContent}>
           <Upload size={40} color="#4F46E5" />
@@ -386,6 +433,7 @@ const ChatInterface = ({ projectId }) => {
         </div>
       </div>
 
+      {/* Main area with chat and search */}
       <div style={styles.mainArea}>
         <header style={styles.header}>
           <div style={styles.headerNav}>
@@ -413,6 +461,7 @@ const ChatInterface = ({ projectId }) => {
           </div>
         </header>
 
+        {/* Search results section */}
         <div style={styles.chatArea}>
           {searchResults.map((result, index) => (
             <div key={index} style={styles.searchResult}>
@@ -424,6 +473,7 @@ const ChatInterface = ({ projectId }) => {
           ))}
         </div>
 
+        {/* User input for search and file upload */}
         <div style={styles.inputSection}>
           <div style={styles.inputContainer}>
             <input
@@ -447,7 +497,7 @@ const ChatInterface = ({ projectId }) => {
               />
               <Upload size={20} />
             </label>
-            <button 
+            <button
               style={styles.iconButton}
               onClick={handleSearch}
               disabled={isLoading}
@@ -461,6 +511,7 @@ const ChatInterface = ({ projectId }) => {
         </div>
       </div>
 
+      {/* Sidebar showing uploaded documents and usage */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarContent}>
           <div style={styles.sidebarHeader}>
@@ -469,7 +520,7 @@ const ChatInterface = ({ projectId }) => {
 
           <div style={styles.usageSection}>
             <div style={styles.usageHeader}>
-              <span>3% of knowledge capacity used</span>
+              <span>0% of knowledge capacity used</span>
               <button style={{ ...styles.iconButton, padding: "0" }}>ⓘ</button>
             </div>
             <div style={styles.usageBar}>
@@ -477,12 +528,13 @@ const ChatInterface = ({ projectId }) => {
             </div>
           </div>
 
+          {/* List of uploaded documents */}
           <div style={styles.documentList}>
             {documents.map((doc) => (
               <div key={doc.id} style={styles.documentItem}>
                 <div style={styles.documentTypeIcon}>{doc.type}</div>
                 <div style={styles.documentInfo}>
-                <h3 style={styles.documentTitle}>{doc.name}</h3>
+                  <h3 style={styles.documentTitle}>{doc.name}</h3>
                   <p style={styles.documentMeta}>
                     {doc.date} · {doc.size}
                   </p>
