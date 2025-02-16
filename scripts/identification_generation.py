@@ -170,12 +170,11 @@ def run_generation(top_k_ids: List[str], question):
     return generated_response_content 
 
 
-# TO-DO: generate correct URLs based on top_k_ids
-def generate_url(top_k_ids):
-    # TO-DO: cleanup
-    pass 
 
 def postprocess_generation(generated_content, top_k_urls, top_k_names):
+    """
+    top_k_urls: firebase artifacts for top k objects (original, not chunks)
+    """
     #Add Reference material from top_k_ids 
     final_output = generated_content + "Reference Material" + "\n"
 
