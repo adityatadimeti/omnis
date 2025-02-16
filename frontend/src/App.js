@@ -18,6 +18,10 @@ function App() {
     setSelectedProject(projectId);
   };
 
+  const handleBack = () => {
+    setSelectedProject(null);
+  };
+
   useEffect(() => {
     const database = getDatabase(app);
     const collectionRef = ref(database);
@@ -43,8 +47,11 @@ function App() {
         height: "100vh",
       }}
     >
-      {/* <ProjectsDashboard onProjectSelect={handleProjectSelect} />; */}
-      <ChatInterface onBack={() => setSelectedProject(null)} projectId={1} />
+      {selectedProject ? (
+        <ChatInterface onBack={handleBack} projectId={selectedProject} />
+      ) : (
+        <ProjectsDashboard onProjectSelect={handleProjectSelect} />
+      )}
     </div>
   );
 }
