@@ -1,8 +1,3 @@
-// // ChatInterface.js
-
-// // This component provides a chat-style interface for uploading files,
-// // chunking them, embedding them, and then searching across them.
-
 // import React, { useState } from "react";
 // import { useNavigate } from "react-router-dom";
 // import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
@@ -744,6 +739,8 @@
 // export default ChatInterface;
 
 
+
+
 // ChatInterface.js
 
 import React, { useState } from "react";
@@ -816,6 +813,7 @@ const baseStyles = {
     color: "#64748B",
     marginTop: "4px",
   },
+  // Chat area styling
   chatArea: {
     flex: 1,
     overflowY: "auto",
@@ -951,9 +949,10 @@ const ChatInterface = ({ projectId }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // We maintain a chat history of messages (user or assistant)
+  // State for the chat conversation
   const [chatHistory, setChatHistory] = useState([]);
 
+  // Other local states
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState([]);
@@ -999,10 +998,12 @@ const ChatInterface = ({ projectId }) => {
     },
   };
 
+  // Return to dashboard
   const handleBack = () => {
     navigate("/dashboard");
   };
 
+  // Drag/Drop event handlers
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1038,7 +1039,10 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
-  // Splits a text file into 1000-word chunks, uploads to Firebase, calls the backend for embedding
+  /**
+   * processFileChunks
+   * Splits text into chunks, uploads them, and sends each chunk to the backend for embedding.
+   */
   const processFileChunks = async (
     file,
     originalFileUrl,
@@ -1072,6 +1076,7 @@ const ChatInterface = ({ projectId }) => {
       await uploadBytes(chunkRef, chunkBlob);
       const chunkUrl = await getDownloadURL(chunkRef);
 
+      // Sanitize user name
       const safeUserName = user?.displayName
         ? user.displayName.replace(/\s+/g, "")
         : "UnknownUser";
@@ -1105,21 +1110,77 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
-  // Uploads a file to Firebase, then processes it for embeddings
+  /**
+   * handleFileUpload
+   * Uploads the file to Firebase, then calls processFileChunks.
+   * If it's an mp4, it fetches a transcript from your backend and then processes it.
+   */
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Partial example if the file is an MP4 (video):
-    // (You could handle transcripts, etc.)
-    if (file["name"].split(".").pop() === "mp4") {
-      // Additional logic for video...
+    // If it's an mp4
+    if (file.name.split(".").pop() === "mp4") {
+      // 1. Upload video to Firebase
+      const storage = getStorage();
+      const fileId = uuidv4();
+      const fileExtension = file.name.split(".").pop();
+      const originalFileRef = storageRef(storage, `documents/${fileId}.${fileExtension}`);
+      await uploadBytes(originalFileRef, file);
+      const originalVideoFileUrl = await getDownloadURL(originalFileRef);
+      console.log("original video file url:", originalVideoFileUrl);
+
+      // 2. Request transcript from your backend
+      const formData = new FormData();
+      formData.append("video", file);
+      const response = await fetch("http://localhost:5010/process_video", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      console.log("Transcript content from server:", data["transcript_content"]);
+
+      // 3. Possibly chunk & embed the transcript
+      await processFileChunks(
+        data["transcript_content"][0], // or [1] depending on which transcript you want
+        originalVideoFileUrl,
+        true,
+        "video",
+        file.name.split(".")[0]
+      );
+
+      // 4. Add to "documents" for UI
+      const videoTranscriptId = uuidv4();
+      const transcriptRef = storageRef(storage, `documents/${videoTranscriptId}.txt`);
+      const transcriptBlob = new Blob([data["transcript_content"][0]], {
+        type: "text/plain",
+      });
+      await uploadBytes(transcriptRef, transcriptBlob);
+      const transcriptUrl = await getDownloadURL(transcriptRef);
+
+      setDocuments((prev) => [
+        ...prev,
+        {
+          id: videoTranscriptId,
+          name: file.name,
+          type: fileExtension.toUpperCase(),
+          date: "Just now",
+          size: `${(file.size / 1024).toFixed(1)} KB`,
+          url: transcriptUrl,
+        },
+      ]);
+
+      setUploadStatus("Upload complete!");
+      setIsLoading(false);
+      setTimeout(() => setUploadStatus(""), 3000);
+
       return;
     } else {
       try {
         setIsLoading(true);
         setUploadStatus("Starting upload...");
 
+        // For text-like files
         const storage = getStorage();
         const fileId = uuidv4();
         const fileExtension = file.name.split(".").pop();
@@ -1136,7 +1197,7 @@ const ChatInterface = ({ projectId }) => {
           originalFileUrl,
           false,
           "text",
-          file["name"].split(".")[0]
+          file.name.split(".")[0]
         );
 
         setDocuments((prev) => [
@@ -1162,15 +1223,22 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
-  // Handles user queries, calls /search, then calls additional endpoints, and updates chat
+  /**
+   * handleSearch
+   * - Adds the user's message to the chat
+   * - Calls your backend for search + any generation logic
+   * - Adds the final answer as an assistant message
+   */
   const handleSearch = async () => {
     if (!message.trim()) return;
 
-    // Add user's question to the chat history
-    setChatHistory((prev) => [...prev, { role: "user", message: message }]);
+    // Add the user's message to the chat
+    setChatHistory((prev) => [
+      ...prev,
+      { role: "user", message: message },
+    ]);
 
     setIsLoading(true);
-
     try {
       const response = await fetch("http://localhost:5010/search", {
         method: "POST",
@@ -1192,7 +1260,7 @@ const ChatInterface = ({ projectId }) => {
         console.log("Search data from server:", search_data);
 
         if (search_data.status === "success") {
-          // Example logic if you have identification/generation endpoints
+          // Example calls to identification/generation/postprocess
           const response1 = await fetch("http://localhost:5010/run_identification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1214,24 +1282,28 @@ const ChatInterface = ({ projectId }) => {
           });
           const data2 = await response2.json();
 
-          const response3 = await fetch("http://localhost:5010/postprocess_generation", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              generated_content: data2["answer"],
-              top_k_urls: search_data.results.map((obj) => obj.original_file_url),
-              top_k_names: search_data.results.map((obj) => obj.file_name),
-            }),
-          });
+          const response3 = await fetch(
+            "http://localhost:5010/postprocess_generation",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                generated_content: data2["answer"],
+                top_k_urls: search_data.results.map((obj) => obj.original_file_url),
+                top_k_names: search_data.results.map((obj) => obj.file_name),
+              }),
+            }
+          );
           const data3 = await response3.json();
 
-          // Add assistant's final answer to the chat
+          // Add the assistant's message to the chat
           setChatHistory((prev) => [
             ...prev,
             { role: "assistant", message: data3["answer"] },
           ]);
         } else {
           console.error("Search error:", search_data.message);
+          // Add an assistant "error" response
           setChatHistory((prev) => [
             ...prev,
             {
@@ -1243,12 +1315,15 @@ const ChatInterface = ({ projectId }) => {
       }
     } catch (error) {
       console.error("Error searching:", error);
+      // Add an assistant "error" message
       setChatHistory((prev) => [
         ...prev,
         { role: "assistant", message: "An error occurred while searching." },
       ]);
     } finally {
       setIsLoading(false);
+      // Clear the input
+      setMessage("");
     }
   };
 
@@ -1263,8 +1338,10 @@ const ChatInterface = ({ projectId }) => {
       <div style={styles.dropZoneOverlay}>
         <div style={styles.dropZoneContent}>
           <Upload size={40} color="#4F46E5" />
-          <div style={styles.dropZoneText}>Drop files here to add to knowledge base</div>
-          <div style={styles.dropZoneSubtext}>Upload PDF, TXT, DOC files</div>
+          <div style={styles.dropZoneText}>
+            Drop files here to add to knowledge base
+          </div>
+          <div style={styles.dropZoneSubtext}>Upload PDF, TXT, DOC, or MP4 files</div>
         </div>
       </div>
 

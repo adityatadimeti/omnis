@@ -227,10 +227,11 @@ def postprocess_generation():
     top_k_names = data['top_k_names']
 
     #Add Reference material from top_k_ids 
-    final_output = generated_content + "Reference Material" + "\n"
+    final_output = generated_content + "\n\n\n" + "Reference Material" + "\n"
 
     for doc_url, doc_name in zip(top_k_urls, top_k_names):
-        final_output += f"<a href={doc_url}>{doc_name}</a> \n"
+        final_output += f"<a href={doc_url}>{doc_name}</a>"
+        final_output += "\n"
 
     return jsonify({
         "status": "success",
