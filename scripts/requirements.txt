@@ -6,4 +6,3 @@ pocketsphinx==5.0.4
 tqdm==4.67.1
 tiktoken==0.8.0
 tk==0.1.0
-PyQt5==5.15.11
