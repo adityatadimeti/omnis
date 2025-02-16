@@ -1,58 +1,42 @@
-import logo from "./logo.svg";
-import React, { useEffect, useState } from "react";
-import "./App.css";
-import app from "./firebaseConfig";
-import { getDatabase, ref, onValue } from "firebase/database";
-import ProtectedRoute from "./ProtectedRoute";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./AuthProvider";
-import ProjectsDashboard from "./ProjectsDashboard";
-import ChatInterface from "./ChatInterface";
+// App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './AuthContext';
+import Login from './Login';
+import Dashboard from './Dashboard';
+import ChatInterface from './ChatInterface';
+
+const PrivateRoute = ({ children }) => {
+  const { user } = useAuth();
+  return user ? children : <Navigate to="/login" />;
+};
 
 function App() {
-  const [data, setData] = useState({});
-
-  const [selectedProject, setSelectedProject] = useState(null);
-
-  const handleProjectSelect = (projectId) => {
-    setSelectedProject(projectId);
-  };
-
-  const handleBack = () => {
-    setSelectedProject(null);
-  };
-
-  useEffect(() => {
-    const database = getDatabase(app);
-    const collectionRef = ref(database);
-
-    const fetchData = () => {
-      onValue(collectionRef, (snapshot) => {
-        const dataItem = snapshot.val();
-        if (dataItem) {
-          setData(dataItem);
-        }
-      });
-    };
-
-    fetchData();
-  }, []);
-
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-      }}
-    >
-      {selectedProject ? (
-        <ChatInterface onBack={handleBack} projectId={selectedProject} />
-      ) : (
-        <ProjectsDashboard onProjectSelect={handleProjectSelect} />
-      )}
-    </div>
+    <Router>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/dashboard"
+            element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/class/:classId"
+            element={
+              <PrivateRoute>
+                <ChatInterface />
+              </PrivateRoute>
+            }
+          />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
   );
 }
 

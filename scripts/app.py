@@ -13,22 +13,28 @@ def create_embedding():
     """Add embedding for a chunk of text."""
     try:
         data = request.json
-        if not data or 'chunk_url' not in data or 'chunk_text' not in data or 'original_file_url' not in data:
+
+        # Check all required fields: chunk_url, chunk_text, original_file_url, user_name
+        required_fields = ["chunk_url", "chunk_text", "original_file_url", "user_name"]
+        missing_fields = [f for f in required_fields if f not in data or not data[f]]
+
+        if missing_fields:
             return jsonify({
                 "status": "error",
-                "message": "Missing required fields: chunk_url, chunk_text, and original_file_url"
+                "message": f"Missing required fields: {', '.join(missing_fields)}"
             }), 400
-            
-        # Add embeddings (or get existing)
+
+        # Call add_embeddings with user_name included
         result = add_embeddings(
             chunk_url=data['chunk_url'],
             chunk_text=data['chunk_text'],
-            original_file_url=data['original_file_url']
+            original_file_url=data['original_file_url'],
+            user_name=data['user_name']
         )
-        
+
         # Return 200 status regardless of whether chunk was new or existing
         return jsonify(result), 200
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -37,29 +43,36 @@ def create_embedding():
 
 @app.route('/search', methods=['POST'])
 def search():
-    """Search for similar content across all chunks."""
+    """Search for similar content in the user's chunk database."""
     try:
         data = request.json
+
+        # Ensure 'query' is present
         if not data or 'query' not in data:
             return jsonify({
                 "status": "error",
                 "message": "Missing required field: query"
             }), 400
-            
+
+        # Get user name (fallback if not provided)
+        user_name = data.get('user_name', 'UnknownUser')
         num_results = data.get('num_results', 3)
-        
+
+        # Pass 'user_name' to the search_files function
         result = search_files(
             search_phrase=data['query'],
+            user_name=user_name,
             num_results=num_results
         )
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5010)
