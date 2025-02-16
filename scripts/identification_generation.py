@@ -69,6 +69,11 @@ def chunk_str(input_str, chunk_size=16384):
 
 
 # Video transcript parsing
+
+def parse_text_from_timestamps_original(data: str) -> str:
+    return re.sub(r'\d{2}:\d{2} - \d{2}:\d{2}: ', '', data).strip().split(": ")
+
+
 def parse_text_from_timestamps(data: str) -> str:
     """
     Removes timestamps from a given formatted text.
@@ -79,9 +84,35 @@ def parse_text_from_timestamps(data: str) -> str:
     Returns:
     List: The cleaned text without timestamps as a list 
     """
-    return re.sub(r'\d{2}:\d{2} - \d{2}:\d{2}: ', '', data).strip().split("\n")
 
-def parse_timestamps(data: str) -> list:
+    # This regular expression will capture:
+    #   Group 1: the timestamp range, e.g. "HH:MM - HH:MM"
+    #   Group 2: all text that follows until the next timestamp or the end of the string
+    pattern = r'(\d{2}:\d{2}\s*-\s*\d{2}:\d{2}):\s*(.*?)\s*(?=\d{2}:\d{2}\s*-\s*\d{2}:\d{2}:|$)'
+
+    matches = re.findall(pattern, data, flags=re.DOTALL)
+
+    results = []
+    for match in matches:
+        timestamp_range = match[0]  # e.g. "00:00 - 00:06"
+        text_block = match[1]
+
+        # Split into start and end times
+        start_time, end_time = timestamp_range.split('-')
+        start_time = start_time.strip()       # e.g. "00:00"
+        end_time = end_time.strip()           # e.g. "00:06"
+
+        # Create a dictionary with your desired fields
+        results.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "text": text_block.strip()
+        })
+
+    # results is now a list of dicts, each with start_time, end_time, and text.
+    return results
+
+def parse_timestamps(chunks: list ) -> list:
     """
     Extracts timestamps from a given formatted text.
     
@@ -91,30 +122,51 @@ def parse_timestamps(data: str) -> list:
     Returns:
     list: A list of extracted timestamps in the form of seconds since the start of the video
     """
-    timestamp_ranges = re.findall(r'\d{2}:\d{2} - \d{2}:\d{2}', data)
-    timestamps = [range.split("-")[0].strip() for range in timestamp_ranges]
+    timestamps = [chunk["start_time"] for chunk in chunks]
     return [int(mm) * 60 + int(ss) for mm, ss in (ts.split(":") for ts in timestamps)]
 
 
+def tokenize(text):
+    """
+    Tokenizes the text into a set of lowercase words.
+    Non-alphabetic characters are used as delimiters.
+    """
+    return set(re.findall(r'\w+', text.lower()))
+
+def jaccard_similarity(tokens_a, tokens_b):
+    """
+    Computes the Jaccard similarity between two sets of tokens:
+    Jaccard = |A ∩ B| / |A ∪ B|
+    """
+    if not tokens_a and not tokens_b:
+        return 0.0
+    intersection = tokens_a.intersection(tokens_b)
+    union = tokens_a.union(tokens_b)
+    return len(intersection) / len(union)
+
 def get_timestamp_from_answer(sentence, chunks):
     """
-    Finds the chunk with the maximum overlap with the given sentence and returns its timestamp.
+    Finds the chunk with the maximum word overlap (via Jaccard similarity)
+    with the given sentence and returns its timestamp.
     
     Parameters:
     - sentence (str): The sentence to compare.
-    - chunks (list of dict): A list of chunks, where each chunk is a dictionary
-      with keys 'text' and 'timestamp'.
-      Example: [{'text': 'Hello world', 'timestamp': "00:10"}, {'text': 'Goodbye', 'timestamp': "00:20"}]
+    - chunks (dict): A dictionary of chunk_name -> chunk_id.
+                     Each `chunk_name` is the textual content to compare,
+                     and `chunk_id` might be a timestamp or any related info.
     
     Returns:
-    - The timestamp of the chunk with the highest overlap.
+    - The chunk_id of the entry with the highest word-based overlap.
     """
-    best_score = 0
+    best_score = 0.0
     best_chunk = None 
     
+    # Tokenize the input sentence
+    sentence_tokens = tokenize(sentence)
+
     for chunk_name, chunk_id in chunks.items():
-        similarity = SequenceMatcher(None, sentence, chunk_name).ratio()
-        
+        chunk_tokens = tokenize(chunk_name)
+        similarity = jaccard_similarity(sentence_tokens, chunk_tokens)
         if similarity > best_score:
             best_score = similarity
             best_chunk = chunk_id
@@ -212,20 +264,17 @@ def postprocess_generation(generated_content, top_k_urls, top_k_names):
 if __name__ == "__main__":
     print("Started testing...")
 
-    # Example usage
-    data = """
-    00:00 - 00:06: Under the eerie glow of full moon, Elias stepped cautiously into the abandoned lighthouse.
-    00:06 - 00:12: It's towering frame groaning against the window the villagers spoke of strange lights flickering inside despite the
-    """
+    data = "00:00 - 00:06: Hey, what's up students? Hope you all are doing well. In this video I'm going to do something a little bit differently. 00:06 - 00:12: to do a product review. So thus far on the channel the focus has been teaching sleight of hand technique and card effects. 00:12 - 00:18: With an ordinary pack of cards. Okay. Now there's a whole nother side to the magic world. There's a 00:18 - 00:24: number of various gimmicks accessories and products out there on the market that allow you to perform some 00:24 - 00:30: really powerful tricks, oftentimes with very little to no sleight of hand technique at all. 00:30 - 00:36: product right here, the Cartoon Deck, is a perfect example of that. This is one of my favorite 00:36 - 00:42: decks of cards so I'm going to give you a quick demonstration of what you can do with this and then I'll talk 00:42 - 00:48: about it a little bit and give you my thoughts on this product. 00:48 - 00:54: Okay, so when you open up this pack of cards, what you'll find... 00:54 - 01:00: is that the deck has been specially printed so every card has a drawing. 01:00 - 01:06: on it. 01:06 - 01:12: works is that the deck is a new deck order. Okay so all the cards are sequential and that way when 01:12 - 01:18: You flicker through the cards. When you riffle through, Bob comes to life. He becomes animated. 01:18 - 01:24: Bob is actually a magician, he does only one trick, but it's a very, very good trick. So at this point you would, you know... 01:24 - 01:30: Now you would explain Bob to your spectator, and then you would ask them to name absolutely any card in the deck. It's a completely free. 01:30 - 01:36: choice. So let's say someone named the eight of diamonds. That's perfect. Okay, so at this point 01:36 - 01:42: we would set the 8 aside, let's just place it right here, and while 01:42 - 01:48: Watch Bob in action, okay, this is his moment of truth. 01:48 - 01:54: this out. If we riffle through the cards, watch what happens. 01:54 - 02:00: off his hat. He reaches in. What is that, a card? 02:00 - 02:06: The Eight of Diamonds. Okay so this trick absolutely works. 02:06 - 02:12: kills. It's fun to do, it's kind of light, it's got that kind of humor to it. 02:12 - 02:18: It plays well for younger audiences and older audiences. It was even performed on Britain's Got Talent. 02:18 - 02:24: not too long ago. So I highly recommend this product if you're looking for, you know, just a new fun trick to do. 02:24 - 02:30: It's very easy, there is one move in here and I would hardly consider it a move, to be honest. 02:30 - 02:36: So if you're interested in purchasing this deck of cards, you can get it from 52cards.com. I'll link you on this. 02:36 - 02:42: screen here and in the description box down below. What you get is the deck of cards obviously and then 02:42 - 02:48: it also comes with a set of written instructions on how to do it and has some other tips as well. 02:48 - 02:54: my personal handling the way that I like to do the trick is a little bit differently than mentioned in 02:54 - 03:00: the instructions. So if you purchase this through 52cars.com, I'll also send 03:00 - 03:06: you a private link to a video going over my personal hand link and give you some visual instruction on how to use that. 03:06 - 03:12: this deck. So that's all. If you want to see more product reviews in the future, let me know in the comments. 03:12 - 03:18: section down below, and I hope this was helpful for you, anyone out there who's looking to, you know. 03:18 - 03:24: purchase a few additional tricks for their arsenal. Until next time, take care and have a great day. 03:24 - 03:30: great day! "
 
-    clean_text_list = parse_text_from_timestamps(data)
-    print(clean_text_list)
+    parsed_text = parse_text_from_timestamps(data)
+    print(parsed_text)
 
-    timestamps = parse_timestamps(data)
+    timestamps = parse_timestamps(parsed_text)
     print(timestamps)
 
+    clean_text_list = [chunk["text"] for chunk in parsed_text]
     chunk_timestamps = dict(zip(clean_text_list, timestamps))
-    get_timestamp_from_answer("Elias stepped cautiously", chunk_timestamps)
+    print(get_timestamp_from_answer("arsenal", chunk_timestamps))
 
 
 

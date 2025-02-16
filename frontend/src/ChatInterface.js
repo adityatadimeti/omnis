@@ -190,6 +190,9 @@ const baseStyles = {
 };
 
 const ChatInterface = ({ projectId }) => {
+
+  // State for the chat conversation
+  const [chatHistory, setChatHistory] = useState([]);
   // Use React Router's navigation
   const navigate = useNavigate();
 
@@ -201,6 +204,7 @@ const ChatInterface = ({ projectId }) => {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [resourceInfo, setResourceInfo] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [uploadStatus, setUploadStatus] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -506,6 +510,12 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
+  const goToVideoPage = (firebaseVideoUrl, timestamp) => {
+    navigate(
+      `/video?src=${encodeURIComponent(firebaseVideoUrl)}&t=${timestamp}`
+    );
+  };
+
   /**
    * handleSearch
    * Sends the user's query to the backend search endpoint
@@ -513,6 +523,11 @@ const ChatInterface = ({ projectId }) => {
    */
   const handleSearch = async () => {
     if (!message.trim()) return;
+
+    setChatHistory((prev) => [
+      ...prev,
+      { role: "user", message: message },
+    ]);
 
     setIsLoading(true);
     try {
@@ -581,10 +596,13 @@ const ChatInterface = ({ projectId }) => {
             body: JSON.stringify({
               transcript_content_chunks: search_data.results.map(obj => obj.chunk_text),
               file_types: search_data.results.map(obj => obj.file_type),
-              question: message,
+              file_urls: search_data.results.map(obj => obj.original_file_url),
+              file_names: search_data.results.map(obj => obj.file_name),
+              top_k_ids: data['top_k_ids'],
             }),
           });
           const data4 = await response4.json();
+          setResourceInfo(data4['timestamp']);
 
           // Update local state with the returned results
           setSearchResults(data3['answer']);
@@ -656,11 +674,32 @@ const ChatInterface = ({ projectId }) => {
         {/* If searchResults is a string, just display it.
             Otherwise, assume it's an array of results. */}
         {typeof searchResults === "string" ? (
-          <div style={styles.searchResult}>{searchResults}</div>
+          <>
+          <div style={styles.searchResult}>{searchResults}
+            <br/>
+            <br/>
+            References:
+          {resourceInfo && <ul>
+            {resourceInfo.map(([url, name, timestamp]) => (
+              <li key={url}>
+                <a href={url} target="_blank" rel="noopener noreferrer" >
+                  {name}
+                </a>
+              </li>
+            ))}
+          </ul>}
+
+          </div>
+
+          
+          </>
+          
         ) : (
           searchResults.map((result, index) => (
             <div key={index} style={styles.searchResult}>
-              <div>{result.chunk_text}</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>
+                  {result.chunk_text}
+              </div>
               <div style={styles.documentMeta}>
                 Score: {result.score.toFixed(2)} | Source: {result.original_file_url}
               </div>
