@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom"; 
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
 import {
   getStorage,
@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // Import useAuth so we can access the current user
 import { useAuth } from "./AuthContext";
+
 
 // Base styling object for major layout parts
 const baseStyles = {
@@ -49,7 +50,7 @@ const baseStyles = {
     color: "white",
   },
   backText: {
-    fontSize: "14px",
+    fontSize: "14px", 
     color: "white",
   },
   projectInfo: {
@@ -194,6 +195,7 @@ const ChatInterface = ({ projectId }) => {
 
   // Get the currently logged-in user from AuthContext
   const { user } = useAuth();
+  const { className } = useParams(); 
 
   // Local state variables
   const [message, setMessage] = useState("");
@@ -639,9 +641,11 @@ const ChatInterface = ({ projectId }) => {
 
           <div style={styles.projectInfo}>
             <h1 style={styles.projectTitle}>
-              <span style={styles.projectName}>CS 194W</span>
+              <span style={styles.projectName}>{className}</span>
             </h1>
-            <p style={styles.projectDescription}>CS 194W final project.</p>
+            <p style={styles.projectDescription}>
+              {className} home page.
+            </p>
           </div>
         </header>
 

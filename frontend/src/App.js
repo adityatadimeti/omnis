@@ -16,7 +16,10 @@ function App() {
     <Router>
       <AuthProvider>
         <Routes>
+          {/* Public routes */}
           <Route path="/login" element={<Login />} />
+
+          {/* Protected routes */}
           <Route
             path="/dashboard"
             element={
@@ -25,14 +28,18 @@ function App() {
               </PrivateRoute>
             }
           />
+
+          {/* Class name (or ID) route parameter */}
           <Route
-            path="/class/:classId"
+            path="/class/:className"
             element={
               <PrivateRoute>
                 <ChatInterface />
               </PrivateRoute>
             }
           />
+
+          {/* Default route goes to dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </AuthProvider>

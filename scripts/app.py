@@ -16,6 +16,7 @@ from tqdm import tqdm
 import re
 from difflib import SequenceMatcher
 from identification_generation import setup_openai_key, parse_text_from_timestamps, parse_timestamps, chunk_str, get_timestamp_from_answer
+from backend_database import setup_database_connection
 
 
 app = Flask(__name__)
@@ -168,6 +169,111 @@ def run_identification():
     })
 
 
+
+@app.route("/create_class", methods=["POST"])
+def create_class():
+    """
+    Creates a new schema for the user: user_name.class_name
+    Optionally create a table as well for chunk embeddings.
+    """
+    try:
+        data = request.json
+        user_name = data.get("user_name", "UnknownUser")
+        class_name = data.get("class_name", "Untitled")
+
+        # Remove spaces or illegal chars
+        safe_user_name = user_name.replace(" ", "")
+        safe_class_name = class_name.replace(" ", "")
+
+        # Now we want to create or ensure the schema <safe_user_name>.<safe_class_name>
+        # In IRIS we might do: CREATE SCHEMA "Aditya_CS194W"
+        # But let's store it as a single schema + table naming approach:
+        # e.g., create a SCHEMA named safe_user_name, then a table "class_name"
+        # OR directly do safe_user_name.safe_class_name
+        conn = setup_database_connection()
+        cursor = conn.cursor()
+
+        # 1) Attempt to create the schema if it doesn't exist
+        # IRIS may or may not support "CREATE SCHEMA IF NOT EXISTS"
+        try:
+            cursor.execute(f'CREATE SCHEMA {safe_user_name}')
+        except Exception as e:
+            # If it already exists or IRIS doesn't support this exact syntax,
+            # you can ignore or handle specifically.
+            print("Schema creation info:", str(e))
+
+        # 2) Create a table inside that schema for chunk embeddings
+        # e.g. {schema}.{classname}_embeddings
+        table_ddl = f"""
+        CREATE TABLE IF NOT EXISTS {safe_user_name}.{safe_class_name}(
+            chunk_url VARCHAR(1000),
+            chunk_text VARCHAR(10000),
+            embedding VECTOR(DOUBLE, 1536),
+            original_file_url VARCHAR(1000)
+        )
+        """
+        cursor.execute(table_ddl)
+        conn.commit()
+
+        # Return some success response
+        return jsonify({
+            "status": "success",
+            "message": f"Created or ensured schema {safe_user_name}, and table {safe_class_name}",
+            "new_class_id": f"{safe_user_name}.{safe_class_name}"
+        }), 200
+
+    except Exception as e:
+        print("Error in /create_class:", str(e))
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# app.py (or similar)
+@app.route('/list_classes', methods=['GET'])
+def list_classes():
+    """
+    Lists all tables from the user's schema, 
+    e.g. AdityaTadimeti.CS194W_embeddings => className: "CS194W"
+    """
+    try:
+        user_name = request.args.get('user_name', 'UnknownUser')
+        safe_user_name = user_name.replace(" ", "")  # or any other sanitization
+
+        conn = setup_database_connection()
+        cursor = conn.cursor()
+
+        # IRIS typically stores table info in INFORMATION_SCHEMA or a dictionary table.
+        # Example query using INFORMATION_SCHEMA:
+        sql = """
+        SELECT table_name 
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE table_schema = ?
+        """
+        cursor.execute(sql, [safe_user_name])
+        rows = cursor.fetchall()
+
+        class_list = []
+        for (table_name,) in rows:
+            # e.g. table_name might be 'CS194W_embeddings'
+            # We'll remove '_embeddings' suffix to get 'CS194W'.
+            if table_name.endswith("_embeddings"):
+                raw_class_name = table_name.replace("_embeddings", "")
+            else:
+                raw_class_name = table_name  # or skip if you only want _embeddings
+
+            class_list.append(raw_class_name)
+
+        return jsonify({
+            "status": "success",
+            "classes": class_list
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 
 @app.route('/run_generation', methods=['POST'])
