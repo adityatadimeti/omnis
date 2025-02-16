@@ -3,15 +3,14 @@
 // This component provides a chat-style interface for uploading files,
 // chunking them, embedding them, and then searching across them.
 
-// Existing imports
 import React, { useState } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 
 // Import useAuth so we can access the current user
-import { useAuth } from './AuthContext';
+import { useAuth } from "./AuthContext";
 
 // Base styling object for major layout parts
 const baseStyles = {
@@ -189,7 +188,6 @@ const baseStyles = {
   },
 };
 
-// Main ChatInterface component
 const ChatInterface = ({ projectId }) => {
   // Use React Router's navigation
   const navigate = useNavigate();
@@ -247,7 +245,7 @@ const ChatInterface = ({ projectId }) => {
 
   // Navigates back to the dashboard
   const handleBack = () => {
-    navigate('/dashboard');
+    navigate("/dashboard");
   };
 
   // Drag-and-drop event handlers
@@ -259,7 +257,7 @@ const ChatInterface = ({ projectId }) => {
   const handleDragIn = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(prev => prev + 1);
+    setDragCounter((prev) => prev + 1);
     if (dragCounter === 0) {
       setIsDragging(true);
     }
@@ -268,7 +266,7 @@ const ChatInterface = ({ projectId }) => {
   const handleDragOut = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(prev => prev - 1);
+    setDragCounter((prev) => prev - 1);
     if (dragCounter === 1) {
       setIsDragging(false);
     }
@@ -301,7 +299,7 @@ const ChatInterface = ({ projectId }) => {
 
     // Break text into 1000-word chunks
     for (let i = 0; i < words.length; i += chunkSize) {
-      chunks.push(words.slice(i, i + chunkSize).join(' '));
+      chunks.push(words.slice(i, i + chunkSize).join(" "));
     }
 
     const storage = getStorage();
@@ -309,27 +307,20 @@ const ChatInterface = ({ projectId }) => {
     // Upload each chunk and request embeddings
     for (let i = 0; i < chunks.length; i++) {
       setUploadStatus(`Processing chunk ${i + 1} of ${chunks.length}`);
-      
+
       const chunkId = uuidv4();
       const chunkRef = storageRef(storage, `chunks/${chunkId}.txt`);
-      const chunkBlob = new Blob([chunks[i]], { type: 'text/plain' });
+      const chunkBlob = new Blob([chunks[i]], { type: "text/plain" });
       await uploadBytes(chunkRef, chunkBlob);
       const chunkUrl = await getDownloadURL(chunkRef);
 
       // Send chunk to our backend for embedding
-      // await fetch('http://localhost:5010/add_embedding', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     // Align naming for ESLint clarity:
-      //     chunk_url: chunkUrl,
-      //     chunk_text: chunks[i],
-      //     original_file_url: originalFileUrl,
-      //     user_name: user?.displayName || "UnknownUser"
-      //   }),
-      // });
-
       try {
+        // Remove all spaces from user.displayName
+        const safeUserName = user?.displayName
+          ? user.displayName.replace(/\s+/g, "")
+          : "UnknownUser";
+      
         const response = await fetch("http://localhost:5010/add_embedding", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -337,27 +328,23 @@ const ChatInterface = ({ projectId }) => {
             chunk_url: chunkUrl,
             chunk_text: chunks[i],
             original_file_url: originalFileUrl,
-            user_name: user?.displayName || "UnknownUser"
+            user_name: safeUserName, // use the space-stripped username
           }),
         });
-      
-        // Check for non-2xx status (i.e. not "OK")
+
+        // Check response status
         if (!response.ok) {
-          // Attempt to parse error text from server
           const errorText = await response.text();
           console.error(
             `Server responded with an error. Status: ${response.status} - ${errorText}`
           );
         } else {
-          // If everything is fine, parse the JSON response
           const data = await response.json();
-          console.log("Success from server:", data);
+          console.log("Successfully embedded chunk:", data);
         }
       } catch (err) {
-        // Catch any fetch/JS-level errors (like connection failure, etc.)
         console.error("Error sending chunk to backend:", err);
       }
-      
     }
   };
 
@@ -372,14 +359,17 @@ const ChatInterface = ({ projectId }) => {
 
     try {
       setIsLoading(true);
-      setUploadStatus('Starting upload...');
+      setUploadStatus("Starting upload...");
 
       const storage = getStorage();
       const fileId = uuidv4();
-      const fileExtension = file.name.split('.').pop();
+      const fileExtension = file.name.split(".").pop();
 
       // Upload the original file to Firebase Storage
-      const originalFileRef = storageRef(storage, `documents/${fileId}.${fileExtension}`);
+      const originalFileRef = storageRef(
+        storage,
+        `documents/${fileId}.${fileExtension}`
+      );
       await uploadBytes(originalFileRef, file);
       const originalFileUrl = await getDownloadURL(originalFileRef);
 
@@ -387,7 +377,7 @@ const ChatInterface = ({ projectId }) => {
       await processFileChunks(file, originalFileUrl);
 
       // Keep track of uploaded files in state
-      setDocuments(prev => [
+      setDocuments((prev) => [
         ...prev,
         {
           id: fileId,
@@ -395,44 +385,60 @@ const ChatInterface = ({ projectId }) => {
           type: fileExtension.toUpperCase(),
           date: "Just now",
           size: `${(file.size / 1024).toFixed(1)} KB`,
-          url: originalFileUrl
-        }
+          url: originalFileUrl,
+        },
       ]);
 
-      setUploadStatus('Upload complete!');
+      setUploadStatus("Upload complete!");
     } catch (error) {
       console.error("Error processing file:", error);
-      setUploadStatus('Error uploading file');
+      setUploadStatus("Error uploading file");
     } finally {
       setIsLoading(false);
       // Clear the status message after a short delay
-      setTimeout(() => setUploadStatus(''), 3000);
+      setTimeout(() => setUploadStatus(""), 3000);
     }
   };
 
   /**
    * handleSearch
-   * Sends the user's query to the backend search endpoint.
+   * Sends the user's query to the backend search endpoint
+   * and displays the topK results from that user's table.
    */
   const handleSearch = async () => {
     if (!message.trim()) return;
-    
+  
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5010/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:5010/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: message,
           num_results: 3,
-          // Optionally include the user name if needed on the search side
-          user_name: user?.displayName || "UnknownUser"
+          user_name: user?.displayName || "UnknownUser",
         }),
       });
-
-      const result = await response.json();
-      if (result.status === 'success') {
-        setSearchResults(result.results);
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Server responded with an error. Status: ${response.status} - ${errorText}`
+        );
+      } else {
+        const data = await response.json();
+        // 1) Log the entire server response
+        console.log("Search data from server:", data);
+  
+        if (data.status === "success") {
+          // 2) Also log just the results for clarity
+          console.log("Search results:", data.results);
+  
+          // Update local state with the returned results
+          setSearchResults(data.results);
+        } else {
+          console.error("Search error:", data.message);
+        }
       }
     } catch (error) {
       console.error("Error searching:", error);
@@ -440,6 +446,7 @@ const ChatInterface = ({ projectId }) => {
       setIsLoading(false);
     }
   };
+  
 
   // Render the main component
   return (
@@ -457,9 +464,7 @@ const ChatInterface = ({ projectId }) => {
           <div style={styles.dropZoneText}>
             Drop files here to add to knowledge base
           </div>
-          <div style={styles.dropZoneSubtext}>
-            Upload PDF, TXT, DOC files
-          </div>
+          <div style={styles.dropZoneSubtext}>Upload PDF, TXT, DOC files</div>
         </div>
       </div>
 
@@ -495,6 +500,7 @@ const ChatInterface = ({ projectId }) => {
         <div style={styles.chatArea}>
           {searchResults.map((result, index) => (
             <div key={index} style={styles.searchResult}>
+              {/* Render chunk text or any other fields */}
               <div>{result.chunk_text}</div>
               <div style={styles.documentMeta}>
                 Score: {result.score.toFixed(2)} | Source: {result.original_file_url}
@@ -503,30 +509,35 @@ const ChatInterface = ({ projectId }) => {
           ))}
         </div>
 
+
         {/* User input for search and file upload */}
         <div style={styles.inputSection}>
           <div style={styles.inputContainer}>
+            {/* Search bar */}
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   handleSearch();
                 }
               }}
-              placeholder="How can Omnis help you today?"
+              placeholder="Ask your knowledge base..."
               style={styles.input}
+              disabled={isLoading}
             />
+            {/* File upload button */}
             <label style={styles.iconButton}>
               <input
                 type="file"
                 onChange={handleFileUpload}
-                style={{ display: 'none' }}
+                style={{ display: "none" }}
                 disabled={isLoading}
               />
               <Upload size={20} />
             </label>
+            {/* Send/search button */}
             <button
               style={styles.iconButton}
               onClick={handleSearch}
@@ -535,9 +546,8 @@ const ChatInterface = ({ projectId }) => {
               <Send size={20} />
             </button>
           </div>
-          {uploadStatus && (
-            <div style={styles.uploadStatus}>{uploadStatus}</div>
-          )}
+          {/* Upload status or error messages */}
+          {uploadStatus && <div style={styles.uploadStatus}>{uploadStatus}</div>}
         </div>
       </div>
 

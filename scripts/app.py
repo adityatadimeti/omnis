@@ -43,29 +43,36 @@ def create_embedding():
 
 @app.route('/search', methods=['POST'])
 def search():
-    """Search for similar content across all chunks."""
+    """Search for similar content in the user's chunk database."""
     try:
         data = request.json
+
+        # Ensure 'query' is present
         if not data or 'query' not in data:
             return jsonify({
                 "status": "error",
                 "message": "Missing required field: query"
             }), 400
-            
+
+        # Get user name (fallback if not provided)
+        user_name = data.get('user_name', 'UnknownUser')
         num_results = data.get('num_results', 3)
-        
+
+        # Pass 'user_name' to the search_files function
         result = search_files(
             search_phrase=data['query'],
+            user_name=user_name,
             num_results=num_results
         )
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5010)

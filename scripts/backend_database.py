@@ -22,11 +22,17 @@ def setup_database_connection():
     connection_string = f"{hostname}:{port}/{namespace}"
     return iris.connect(connection_string, username, password)
 
-def ensure_table_exists(cursor, user_name):
-    # Replace spaces (and possibly other special chars) with underscores
-    safe_user_name = user_name.strip().replace(" ", "_")
+def ensure_schema_exists(cursor, schema_name):
+    # Attempt to create the schema. IRIS supports CREATE SCHEMA in some versions:
+    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
-    # Then create the schema.table:
+def ensure_table_exists(cursor, user_name):
+    safe_user_name = user_name.strip().replace(" ", "")
+    
+    # 1) Create the schema (if IRIS allows CREATE SCHEMA)
+    ensure_schema_exists(cursor, safe_user_name)
+
+    # 2) Then create the table inside that schema
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS {safe_user_name}.classes (
             chunk_url VARCHAR(1000),
@@ -38,8 +44,9 @@ def ensure_table_exists(cursor, user_name):
     return True
 
 
+
 def check_chunk_exists(cursor, user_name, chunk_url):
-    safe_user_name = user_name.strip().replace(" ", "_")
+    safe_user_name = user_name.strip().replace(" ", "")
     cursor.execute(f"""
         SELECT COUNT(*) FROM {safe_user_name}.classes
         WHERE chunk_url = ?
@@ -82,38 +89,51 @@ def add_embeddings(chunk_url, chunk_text, original_file_url, user_name):
             conn.close()
 
 def search_files(search_phrase, user_name, num_results=3):
+    """
+    Search across the user's {user_name}_underscored.classes table,
+    retrieving the top K most similar chunks.
+    """
     try:
+        # 1) Setup keys + DB
         setup_openai_key()
         conn = setup_database_connection()
         cursor = conn.cursor()
-        
+
+        safe_user_name = user_name.strip().replace(" ", "")
+
+        # 3) Embed the query
         embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small")
         search_vector = embeddings_model.embed_query(search_phrase)
-        
+
+        # 4) Perform a top-K search in that user’s classes table only
         sql = f"""
-            SELECT TOP ? chunk_url, chunk_text, original_file_url,
-                   VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) as similarity_score
-            FROM {user_name}.classes
-            ORDER BY VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) DESC
+            SELECT TOP ? chunk_url,
+                         chunk_text,
+                         original_file_url,
+                         VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) as similarity_score
+              FROM {safe_user_name}.classes
+             ORDER BY VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) DESC
         """
-        
+
         cursor.execute(sql, [num_results, str(search_vector), str(search_vector)])
         results = cursor.fetchall()
-        
-        formatted_results = [
-            {
+
+        # 5) Format results
+        formatted_results = []
+        for row in results:
+            chunk_url, chunk_text, original_file_url, score = row
+            formatted_results.append({
                 "chunk_url": chunk_url,
                 "chunk_text": chunk_text,
                 "original_file_url": original_file_url,
                 "score": score
-            }
-            for chunk_url, chunk_text, original_file_url, score in results
-        ]
-        
+            })
+
         return {"status": "success", "results": formatted_results}
-        
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
     finally:
         if 'cursor' in locals():
             cursor.close()
