@@ -1,17 +1,97 @@
 import React, { useState } from "react";
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { v4 as uuidv4 } from 'uuid';
 
 const ChatInterface = ({ onBack, projectId }) => {
   const [message, setMessage] = useState("");
-  const [documents] = useState([
-    {
-      id: 1,
-      name: "Group 2 CS194 Product Requirements Document (PRD)",
-      type: "pdf",
-      date: "13 days ago",
-      size: "Large file",
-    },
-  ]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [documents, setDocuments] = useState([]);  // Changed to empty array
+  const [uploadStatus, setUploadStatus] = useState('');
+
+  const processFileChunks = async (file, originalFileUrl) => {
+    const text = await file.text();
+    const chunkSize = 1000;
+    const chunks = [];
+
+    
+    
+    // Split text into chunks
+    const words = text.split(/\s+/);
+
+    for (let i = 0; i < words.length; i += chunkSize) {
+        chunks.push(words.slice(i, i + chunkSize).join(' '));
+    }
+
+    const storage = getStorage();
+
+    // Process each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      setUploadStatus(`Processing chunk ${i + 1} of ${chunks.length}`);
+      
+      // Create and upload chunk to Firebase
+      const chunkId = uuidv4();
+      const chunkRef = storageRef(storage, `chunks/${chunkId}.txt`);
+      const chunkBlob = new Blob([chunks[i]], { type: 'text/plain' });
+      await uploadBytes(chunkRef, chunkBlob);
+      const chunkUrl = await getDownloadURL(chunkRef);
+
+      // Store in IRIS with embedding
+      await fetch('http://localhost:5010/add_embedding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chunk_url: chunkUrl,
+          chunk_text: chunks[i],
+          original_file_url: originalFileUrl
+        }),
+      });
+    }
+  };
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    console.log(file);
+    if (!file) return;
+
+    try {
+      setIsLoading(true);
+      setUploadStatus('Starting upload...');
+
+      // 1. Upload original file to Firebase
+      const storage = getStorage();
+      const fileId = uuidv4();
+      const fileExtension = file.name.split('.').pop();
+      const originalFileRef = storageRef(storage, `documents/${fileId}.${fileExtension}`);
+      
+      await uploadBytes(originalFileRef, file);
+      const originalFileUrl = await getDownloadURL(originalFileRef);
+
+      // 2. Process chunks and store embeddings
+      await processFileChunks(file, originalFileUrl);
+
+      // 3. Update UI with new document
+      setDocuments(prev => [...prev, {
+        id: fileId,
+        name: file.name,
+        type: fileExtension.toUpperCase(),
+        date: "Just now",
+        size: `${(file.size / 1024).toFixed(1)} KB`,
+        url: originalFileUrl
+      }]);
+
+      setUploadStatus('Upload complete!');
+      
+    } catch (error) {
+      console.error("Error processing file:", error);
+      setUploadStatus('Error uploading file');
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => setUploadStatus(''), 3000);  // Clear status after 3 seconds
+    }
+  };
 
   const styles = {
     container: {
@@ -225,9 +305,15 @@ const ChatInterface = ({ onBack, projectId }) => {
               placeholder="How can Claude help you today?"
               style={styles.input}
             />
-            <button style={styles.iconButton}>
+            <label style={styles.iconButton}>
+              <input
+                type="file"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+                disabled={isLoading}
+              />
               <Upload size={20} />
-            </button>
+            </label>
             <button style={styles.iconButton}>
               <Send size={20} />
             </button>
