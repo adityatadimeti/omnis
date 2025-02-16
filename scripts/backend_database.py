@@ -74,7 +74,7 @@ def add_embeddings(chunk_url, chunk_text, original_file_url, user_name, file_typ
         sql = f"""
             INSERT INTO {table_name}.classes
             (chunk_url, chunk_text, embedding, original_file_url, file_type, file_name)
-            VALUES (?, ?, TO_VECTOR(?), ?)
+            VALUES (?, ?, TO_VECTOR(?), ?, ?, ?)
         """
         
         cursor.execute(sql, [chunk_url, chunk_text, str(embedding), original_file_url, file_type, file_name])

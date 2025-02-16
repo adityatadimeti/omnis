@@ -28,7 +28,7 @@ def create_embedding():
         data = request.json
 
         # Check all required fields: chunk_url, chunk_text, original_file_url, user_name
-        required_fields = ["chunk_url", "chunk_text", "original_file_url", "user_name", "file_type"]
+        required_fields = ["chunk_url", "chunk_text", "original_file_url", "user_name", "file_type", "file_name"]
         missing_fields = [f for f in required_fields if f not in data or not data[f]]
 
         if missing_fields:
@@ -43,7 +43,8 @@ def create_embedding():
             chunk_text=data['chunk_text'],
             original_file_url=data['original_file_url'],
             user_name=data['user_name'],
-            file_type=data['file_type']
+            file_type=data['file_type'],
+            file_name=data['file_name']
         )
 
         # Return 200 status regardless of whether chunk was new or existing
@@ -129,9 +130,10 @@ def run_identification():
 
     client = setup_openai_key()
 
+    print(data)
 
     top_k_ids = []
-    for idx, chunk_text, chunk_type in tqdm(enumerate(zip(top_k_queries, top_k_types))):
+    for idx, (chunk_text, chunk_type) in tqdm(enumerate(zip(top_k_queries, top_k_types))):
         if chunk_type == "video":
             # Remove whitespace after joining
             chunk_text = "\n".join(parse_text_from_timestamps(chunk_text)).strip()
@@ -149,10 +151,9 @@ def run_identification():
 
         # Make the API call to o1-mini
         id_response = client.chat.completions.create(
-            model="o1-mini",
+            model="gpt-4o",
             messages = [
             {"role": "user", "content": f"instructions {ID_MODEL_SYSTEM_PROMPT}\n, question: {INPUT_MSG}"}],
-            reasoning_effort="low"  # Options: "low", "medium", "high"
         )
 
         id_response_content = id_response.choices[0].message.content
