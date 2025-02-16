@@ -241,12 +241,15 @@ def postprocess_generation():
 def get_video_timestamp():
     data = request.json
 
-    file_type = data['file_type']
-
-    if file_type == "video":
-        clean_text = parse_text_from_timestamps(data["transcript_content"])
-        timestamps = parse_timestamps(data["transcript_content"])
-        chunk_timestamps = dict(zip(clean_text, timestamps))
+    file_types = data['file_types']
+    chunk_timestamps = {}
+    for file_type in file_types: 
+        if file_type == "video":
+            clean_text = parse_text_from_timestamps(data["transcript_content_chunks"])
+            timestamps = parse_timestamps(data["transcript_content_chunks"])
+            chunk_timestamps.update(zip(clean_text, timestamps))
+    
+    if chunk_timestamps:
         return jsonify({
             "status": "success",
             "timestamp": get_timestamp_from_answer(data["question"], chunk_timestamps)
