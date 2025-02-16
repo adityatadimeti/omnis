@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from backend_database import add_embeddings, search_files
 import os
+from video_to_transcript import AudioHandler
 
 app = Flask(__name__)
 CORS(app)
@@ -34,6 +35,35 @@ def create_embedding():
             "status": "error",
             "message": str(e)
         }), 500
+    
+@app.route('/process_video', methods=['POST'])
+def process_video():
+    
+    video_file = request.files['video']
+
+    file_path = 'temp/video.mp4'
+    video_file.save(file_path)
+
+    ah = AudioHandler(file_path)
+    transcript_paths = ah.process_audio()
+    print("transcript(s) saved to: ", transcript_paths)
+
+    #convert the posix paths to file paths
+    transcript_paths = [str(path) for path in transcript_paths]
+    transcript_content = []
+
+    for tp in transcript_paths:
+        with open(tp, 'r') as file:
+            content = file.read()
+            transcript_content.append(content)
+
+    return jsonify({
+        "status": "success",
+        "message": "Video processed successfully",
+        "transcript_paths": transcript_paths,
+        "transcript_content": transcript_content
+    })
+
 
 @app.route('/search', methods=['POST'])
 def search():
