@@ -1,9 +1,186 @@
 import React, { useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from 'uuid';
 
-const ChatInterface = ({ onBack, projectId }) => {
+const baseStyles = {
+  container: {
+    display: "flex",
+    width: "100%",
+    height: "100vh",
+    backgroundColor: "#334155",
+    position: "relative",
+  },
+  mainArea: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+  },
+  header: {
+    borderBottom: "1px solid gray",
+    backgroundColor: "#334155",
+    padding: "16px",
+  },
+  headerNav: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  navGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+  },
+  iconButton: {
+    padding: "8px",
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    color: "white",
+  },
+  backText: {
+    fontSize: "14px",
+    color: "white",
+  },
+  projectInfo: {
+    marginTop: "16px",
+  },
+  projectTitle: {
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+  },
+  projectName: {
+    fontSize: "20px",
+    fontWeight: 600,
+    marginRight: "8px",
+  },
+  projectDescription: {
+    fontSize: "14px",
+    color: "#64748B",
+    marginTop: "4px",
+  },
+  chatArea: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "16px",
+    color: "white",
+  },
+  searchResult: {
+    padding: "12px",
+    margin: "8px 0",
+    backgroundColor: "#1E293B",
+    borderRadius: "8px",
+  },
+  inputSection: {
+    borderTop: "1px solid gray",
+    backgroundColor: "#0F172A",
+    padding: "16px",
+  },
+  inputContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  input: {
+    flex: 1,
+    padding: "8px 16px",
+    borderRadius: "8px",
+    border: "1px solid #E5E7EB",
+    color: "white",
+    backgroundColor: "#1E293B",
+    outline: "none",
+  },
+  uploadStatus: {
+    color: "white",
+    textAlign: "center",
+    marginTop: "8px",
+    fontSize: "14px",
+  },
+  sidebar: {
+    width: "320px",
+    borderLeft: "1px solid gray",
+    backgroundColor: "#1E293B",
+  },
+  sidebarContent: {
+    padding: "16px",
+  },
+  sidebarHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sidebarTitle: {
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "white",
+  },
+  usageSection: {
+    marginTop: "24px",
+    marginBottom: "24px",
+  },
+  usageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: "14px",
+    color: "#6B7280",
+  },
+  usageBar: {
+    marginTop: "8px",
+    height: "4px",
+    backgroundColor: "#F3F4F6",
+    borderRadius: "9999px",
+  },
+  usageProgress: {
+    width: "3%",
+    height: "100%",
+    backgroundColor: "#2563EB",
+    borderRadius: "9999px",
+  },
+  documentList: {
+    marginTop: "24px",
+  },
+  documentItem: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "12px",
+    padding: "12px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    backgroundColor: "#0F172A",
+    marginBottom: "8px",
+  },
+  documentTypeIcon: {
+    width: "32px",
+    height: "32px",
+    backgroundColor: "#1E293B",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "12px",
+    color: "white",
+  },
+  documentInfo: {
+    flex: 1,
+  },
+  documentTitle: {
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "white",
+    margin: 0,
+  },
+  documentMeta: {
+    fontSize: "12px",
+    color: "#64748B",
+    marginTop: "4px",
+  },
+};
+
+const ChatInterface = ({ projectId }) => {
+  const navigate = useNavigate();
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -11,6 +188,48 @@ const ChatInterface = ({ onBack, projectId }) => {
   const [uploadStatus, setUploadStatus] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
+
+  const styles = {
+    ...baseStyles,
+    dropZoneOverlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(15, 23, 42, 0.9)",
+      display: isDragging ? "flex" : "none",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      pointerEvents: "none",
+      transition: "opacity 0.2s ease",
+      opacity: isDragging ? 1 : 0,
+    },
+    dropZoneContent: {
+      padding: "40px 60px",
+      borderRadius: "12px",
+      border: "2px dashed #4F46E5",
+      backgroundColor: "#1E293B",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "12px",
+    },
+    dropZoneText: {
+      color: "white",
+      fontSize: "18px",
+      fontWeight: 500,
+    },
+    dropZoneSubtext: {
+      color: "#94A3B8",
+      fontSize: "14px",
+    },
+  };
+
+  const handleBack = () => {
+    navigate('/dashboard');
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -147,215 +366,6 @@ const ChatInterface = ({ onBack, projectId }) => {
     }
   };
 
-  const styles = {
-    container: {
-      display: "flex",
-      width: "100%",
-      height: "100vh",
-      backgroundColor: "#334155",
-      position: "relative",
-    },
-    mainArea: {
-      flex: 1,
-      display: "flex",
-      flexDirection: "column",
-    },
-    header: {
-      borderBottom: "1px solid gray",
-      backgroundColor: "#334155",
-      padding: "16px",
-    },
-    headerNav: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    navGroup: {
-      display: "flex",
-      alignItems: "center",
-      gap: "16px",
-    },
-    iconButton: {
-      padding: "8px",
-      border: "none",
-      background: "none",
-      cursor: "pointer",
-      color: "white",
-    },
-    backText: {
-      fontSize: "14px",
-      color: "white",
-    },
-    projectInfo: {
-      marginTop: "16px",
-    },
-    projectTitle: {
-      color: "white",
-      display: "flex",
-      alignItems: "center",
-    },
-    projectName: {
-      fontSize: "20px",
-      fontWeight: 600,
-      marginRight: "8px",
-    },
-    projectDescription: {
-      fontSize: "14px",
-      color: "#64748B",
-      marginTop: "4px",
-    },
-    chatArea: {
-      flex: 1,
-      overflowY: "auto",
-      padding: "16px",
-      color: "white",
-    },
-    searchResult: {
-      padding: "12px",
-      margin: "8px 0",
-      backgroundColor: "#1E293B",
-      borderRadius: "8px",
-    },
-    inputSection: {
-      borderTop: "1px solid gray",
-      backgroundColor: "#0F172A",
-      padding: "16px",
-    },
-    inputContainer: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-    },
-    input: {
-      flex: 1,
-      padding: "8px 16px",
-      borderRadius: "8px",
-      border: "1px solid #E5E7EB",
-      color: "white",
-      backgroundColor: "#1E293B",
-      outline: "none",
-    },
-    uploadStatus: {
-      color: "white",
-      textAlign: "center",
-      marginTop: "8px",
-      fontSize: "14px",
-    },
-    sidebar: {
-      width: "320px",
-      borderLeft: "1px solid gray",
-      backgroundColor: "#1E293B",
-    },
-    sidebarContent: {
-      padding: "16px",
-    },
-    sidebarHeader: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    sidebarTitle: {
-      fontSize: "14px",
-      fontWeight: 500,
-      color: "white",
-    },
-    usageSection: {
-      marginTop: "24px",
-      marginBottom: "24px",
-    },
-    usageHeader: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      fontSize: "14px",
-      color: "#6B7280",
-    },
-    usageBar: {
-      marginTop: "8px",
-      height: "4px",
-      backgroundColor: "#F3F4F6",
-      borderRadius: "9999px",
-    },
-    usageProgress: {
-      width: "3%",
-      height: "100%",
-      backgroundColor: "#2563EB",
-      borderRadius: "9999px",
-    },
-    documentList: {
-      marginTop: "24px",
-    },
-    documentItem: {
-      display: "flex",
-      alignItems: "flex-start",
-      gap: "12px",
-      padding: "12px",
-      borderRadius: "8px",
-      cursor: "pointer",
-      backgroundColor: "#0F172A",
-      marginBottom: "8px",
-    },
-    documentTypeIcon: {
-      width: "32px",
-      height: "32px",
-      backgroundColor: "#1E293B",
-      borderRadius: "8px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: "12px",
-      color: "white",
-    },
-    documentInfo: {
-      flex: 1,
-    },
-    documentTitle: {
-      fontSize: "14px",
-      fontWeight: 500,
-      color: "white",
-      margin: 0,
-    },
-    documentMeta: {
-      fontSize: "12px",
-      color: "#64748B",
-      marginTop: "4px",
-    },
-    dropZoneOverlay: {
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(15, 23, 42, 0.9)",
-      display: isDragging ? "flex" : "none",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 1000,
-      pointerEvents: "none",
-      transition: "opacity 0.2s ease",
-      opacity: isDragging ? 1 : 0,
-    },
-    dropZoneContent: {
-      padding: "40px 60px",
-      borderRadius: "12px",
-      border: "2px dashed #4F46E5",
-      backgroundColor: "#1E293B",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "12px",
-    },
-    dropZoneText: {
-      color: "white",
-      fontSize: "18px",
-      fontWeight: 500,
-    },
-    dropZoneSubtext: {
-      color: "#94A3B8",
-      fontSize: "14px",
-    },
-  };
-
   return (
     <div
       style={styles.container}
@@ -380,7 +390,7 @@ const ChatInterface = ({ onBack, projectId }) => {
         <header style={styles.header}>
           <div style={styles.headerNav}>
             <div style={styles.navGroup}>
-              <button style={styles.iconButton} onClick={onBack}>
+              <button style={styles.iconButton} onClick={handleBack}>
                 <ChevronLeft size={20} />
               </button>
               <span style={styles.backText}>All projects</span>
@@ -472,14 +482,14 @@ const ChatInterface = ({ onBack, projectId }) => {
               <div key={doc.id} style={styles.documentItem}>
                 <div style={styles.documentTypeIcon}>{doc.type}</div>
                 <div style={styles.documentInfo}>
-                  <h3 style={styles.documentTitle}>{doc.name}</h3>
+                <h3 style={styles.documentTitle}>{doc.name}</h3>
                   <p style={styles.documentMeta}>
                     {doc.date} · {doc.size}
                   </p>
                 </div>
               </div>
             ))}
-            </div>
+          </div>
         </div>
       </div>
     </div>
