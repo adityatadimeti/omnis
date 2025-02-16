@@ -15,7 +15,7 @@ from typing import List
 from tqdm import tqdm
 import re
 from difflib import SequenceMatcher
-from identification_generation import setup_openai_key, parse_text_from_timestamps, parse_timestamps, chunk_str
+from identification_generation import setup_openai_key, parse_text_from_timestamps, parse_timestamps, chunk_str, get_timestamp_from_answer
 from backend_database import setup_database_connection
 
 
@@ -339,13 +339,34 @@ def postprocess_generation():
     final_output = generated_content + "\n\n\n" + "Reference Material" + "\n"
 
     for doc_url, doc_name in zip(top_k_urls, top_k_names):
-        final_output += f"<a href={doc_url}>{doc_name}</a>"
-        final_output += "\n"
+        final_output += f"{doc_name} \n" #<a href={doc_url}>{doc_name}</a> \n"
 
     return jsonify({
         "status": "success",
         "answer": final_output
     })
 
+@app.route('/get_video_timestamp', methods=['POST'])
+def get_video_timestamp():
+    data = request.json
+
+    file_types = data['file_types']
+    chunk_timestamps = {}
+    for file_type in file_types: 
+        if file_type == "video":
+            clean_text = parse_text_from_timestamps(data["transcript_content_chunks"])
+            timestamps = parse_timestamps(data["transcript_content_chunks"])
+            chunk_timestamps.update(zip(clean_text, timestamps))
+    
+    if chunk_timestamps:
+        return jsonify({
+            "status": "success",
+            "timestamp": get_timestamp_from_answer(data["question"], chunk_timestamps)
+        })
+    else:
+        return jsonify({
+            "status": "success",
+            "timestamp": 0
+        })
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5010)

@@ -89,11 +89,37 @@ def parse_timestamps(data: str) -> list:
     data (str): The input text with timestamps.
     
     Returns:
-    list: A list of extracted timestamps in the form "00:00".
+    list: A list of extracted timestamps in the form of seconds since the start of the video
     """
     timestamp_ranges = re.findall(r'\d{2}:\d{2} - \d{2}:\d{2}', data)
-    return [range.split("-")[0].strip() for range in timestamp_ranges]
+    timestamps = [range.split("-")[0].strip() for range in timestamp_ranges]
+    return [int(mm) * 60 + int(ss) for mm, ss in (ts.split(":") for ts in timestamps)]
 
+
+def get_timestamp_from_answer(sentence, chunks):
+    """
+    Finds the chunk with the maximum overlap with the given sentence and returns its timestamp.
+    
+    Parameters:
+    - sentence (str): The sentence to compare.
+    - chunks (list of dict): A list of chunks, where each chunk is a dictionary
+      with keys 'text' and 'timestamp'.
+      Example: [{'text': 'Hello world', 'timestamp': "00:10"}, {'text': 'Goodbye', 'timestamp': "00:20"}]
+    
+    Returns:
+    - The timestamp of the chunk with the highest overlap.
+    """
+    best_score = 0
+    best_chunk = None 
+    
+    for chunk_name, chunk_id in chunks.items():
+        similarity = SequenceMatcher(None, sentence, chunk_name).ratio()
+        
+        if similarity > best_score:
+            best_score = similarity
+            best_chunk = chunk_id
+    
+    return best_chunk
 
 def run_identification(top_k_queries: List[str], top_k_types: List[str], question: str):
     """
@@ -198,6 +224,8 @@ if __name__ == "__main__":
     timestamps = parse_timestamps(data)
     print(timestamps)
 
+    chunk_timestamps = dict(zip(clean_text_list, timestamps))
+    get_timestamp_from_answer("Elias stepped cautiously", chunk_timestamps)
 
 
 
