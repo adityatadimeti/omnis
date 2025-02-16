@@ -7,37 +7,67 @@ const ChatInterface = ({ onBack, projectId }) => {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
-  const [documents, setDocuments] = useState([]);  // Changed to empty array
+  const [documents, setDocuments] = useState([]);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragIn = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev + 1);
+    if (dragCounter === 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOut = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev - 1);
+    if (dragCounter === 1) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(0);
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await handleFileUpload({ target: { files: [files[0]] } });
+    }
+  };
 
   const processFileChunks = async (file, originalFileUrl) => {
     const text = await file.text();
     const chunkSize = 1000;
+    const words = text.split(/\s+/);
     const chunks = [];
 
-    
-    
-    // Split text into chunks
-    const words = text.split(/\s+/);
-
     for (let i = 0; i < words.length; i += chunkSize) {
-        chunks.push(words.slice(i, i + chunkSize).join(' '));
+      chunks.push(words.slice(i, i + chunkSize).join(' '));
     }
 
     const storage = getStorage();
 
-    // Process each chunk
     for (let i = 0; i < chunks.length; i++) {
       setUploadStatus(`Processing chunk ${i + 1} of ${chunks.length}`);
       
-      // Create and upload chunk to Firebase
       const chunkId = uuidv4();
       const chunkRef = storageRef(storage, `chunks/${chunkId}.txt`);
       const chunkBlob = new Blob([chunks[i]], { type: 'text/plain' });
       await uploadBytes(chunkRef, chunkBlob);
       const chunkUrl = await getDownloadURL(chunkRef);
 
-      // Store in IRIS with embedding
       await fetch('http://localhost:5010/add_embedding', {
         method: 'POST',
         headers: {
@@ -51,16 +81,15 @@ const ChatInterface = ({ onBack, projectId }) => {
       });
     }
   };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
-    console.log(file);
     if (!file) return;
 
     try {
       setIsLoading(true);
       setUploadStatus('Starting upload...');
 
-      // 1. Upload original file to Firebase
       const storage = getStorage();
       const fileId = uuidv4();
       const fileExtension = file.name.split('.').pop();
@@ -69,10 +98,8 @@ const ChatInterface = ({ onBack, projectId }) => {
       await uploadBytes(originalFileRef, file);
       const originalFileUrl = await getDownloadURL(originalFileRef);
 
-      // 2. Process chunks and store embeddings
       await processFileChunks(file, originalFileUrl);
 
-      // 3. Update UI with new document
       setDocuments(prev => [...prev, {
         id: fileId,
         name: file.name,
@@ -89,7 +116,34 @@ const ChatInterface = ({ onBack, projectId }) => {
       setUploadStatus('Error uploading file');
     } finally {
       setIsLoading(false);
-      setTimeout(() => setUploadStatus(''), 3000);  // Clear status after 3 seconds
+      setTimeout(() => setUploadStatus(''), 3000);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!message.trim()) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:5010/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: message,
+          num_results: 3
+        }),
+      });
+
+      const result = await response.json();
+      if (result.status === 'success') {
+        setSearchResults(result.results);
+      }
+    } catch (error) {
+      console.error("Error searching:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -99,6 +153,7 @@ const ChatInterface = ({ onBack, projectId }) => {
       width: "100%",
       height: "100vh",
       backgroundColor: "#334155",
+      position: "relative",
     },
     mainArea: {
       flex: 1,
@@ -144,12 +199,6 @@ const ChatInterface = ({ onBack, projectId }) => {
       fontWeight: 600,
       marginRight: "8px",
     },
-    privateLabel: {
-      fontSize: "12px",
-      padding: "4px 8px",
-      backgroundColor: "#F3F4F6",
-      borderRadius: "6px",
-    },
     projectDescription: {
       fontSize: "14px",
       color: "#64748B",
@@ -159,6 +208,13 @@ const ChatInterface = ({ onBack, projectId }) => {
       flex: 1,
       overflowY: "auto",
       padding: "16px",
+      color: "white",
+    },
+    searchResult: {
+      padding: "12px",
+      margin: "8px 0",
+      backgroundColor: "#1E293B",
+      borderRadius: "8px",
     },
     inputSection: {
       borderTop: "1px solid gray",
@@ -179,6 +235,12 @@ const ChatInterface = ({ onBack, projectId }) => {
       backgroundColor: "#1E293B",
       outline: "none",
     },
+    uploadStatus: {
+      color: "white",
+      textAlign: "center",
+      marginTop: "8px",
+      fontSize: "14px",
+    },
     sidebar: {
       width: "320px",
       borderLeft: "1px solid gray",
@@ -197,15 +259,9 @@ const ChatInterface = ({ onBack, projectId }) => {
       fontWeight: 500,
       color: "white",
     },
-    addButton: {
-      color: "#64748B",
-      fontSize: "14px",
-      border: "none",
-      background: "none",
-      cursor: "pointer",
-    },
     usageSection: {
       marginTop: "24px",
+      marginBottom: "24px",
     },
     usageHeader: {
       display: "flex",
@@ -233,40 +289,93 @@ const ChatInterface = ({ onBack, projectId }) => {
       display: "flex",
       alignItems: "flex-start",
       gap: "12px",
-      flexDirection: "row",
       padding: "12px",
-      cursor: "pointer",
       borderRadius: "8px",
+      cursor: "pointer",
+      backgroundColor: "#0F172A",
+      marginBottom: "8px",
     },
     documentTypeIcon: {
       width: "32px",
       height: "32px",
-      backgroundColor: "#F3F4F6",
+      backgroundColor: "#1E293B",
       borderRadius: "8px",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       fontSize: "12px",
-      textTransform: "uppercase",
+      color: "white",
     },
     documentInfo: {
       flex: 1,
     },
     documentTitle: {
       fontSize: "14px",
-      marginTop: "0px",
       fontWeight: 500,
       color: "white",
+      margin: 0,
     },
     documentMeta: {
       fontSize: "12px",
       color: "#64748B",
       marginTop: "4px",
     },
+    dropZoneOverlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(15, 23, 42, 0.9)",
+      display: isDragging ? "flex" : "none",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      pointerEvents: "none",
+      transition: "opacity 0.2s ease",
+      opacity: isDragging ? 1 : 0,
+    },
+    dropZoneContent: {
+      padding: "40px 60px",
+      borderRadius: "12px",
+      border: "2px dashed #4F46E5",
+      backgroundColor: "#1E293B",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "12px",
+    },
+    dropZoneText: {
+      color: "white",
+      fontSize: "18px",
+      fontWeight: 500,
+    },
+    dropZoneSubtext: {
+      color: "#94A3B8",
+      fontSize: "14px",
+    },
   };
 
   return (
-    <div style={styles.container}>
+    <div
+      style={styles.container}
+      onDragEnter={handleDragIn}
+      onDragLeave={handleDragOut}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+    >
+      <div style={styles.dropZoneOverlay}>
+        <div style={styles.dropZoneContent}>
+          <Upload size={40} color="#4F46E5" />
+          <div style={styles.dropZoneText}>
+            Drop files here to add to knowledge base
+          </div>
+          <div style={styles.dropZoneSubtext}>
+            Upload PDF, TXT, DOC files
+          </div>
+        </div>
+      </div>
+
       <div style={styles.mainArea}>
         <header style={styles.header}>
           <div style={styles.headerNav}>
@@ -294,7 +403,16 @@ const ChatInterface = ({ onBack, projectId }) => {
           </div>
         </header>
 
-        <div style={styles.chatArea}>{/* Messages would go here */}</div>
+        <div style={styles.chatArea}>
+          {searchResults.map((result, index) => (
+            <div key={index} style={styles.searchResult}>
+              <div>{result.chunk_text}</div>
+              <div style={styles.documentMeta}>
+                Score: {result.score.toFixed(2)} | Source: {result.original_file_url}
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div style={styles.inputSection}>
           <div style={styles.inputContainer}>
@@ -302,6 +420,11 @@ const ChatInterface = ({ onBack, projectId }) => {
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearch();
+                }
+              }}
               placeholder="How can Claude help you today?"
               style={styles.input}
             />
@@ -314,10 +437,17 @@ const ChatInterface = ({ onBack, projectId }) => {
               />
               <Upload size={20} />
             </label>
-            <button style={styles.iconButton}>
+            <button 
+              style={styles.iconButton}
+              onClick={handleSearch}
+              disabled={isLoading}
+            >
               <Send size={20} />
             </button>
           </div>
+          {uploadStatus && (
+            <div style={styles.uploadStatus}>{uploadStatus}</div>
+          )}
         </div>
       </div>
 
@@ -325,7 +455,6 @@ const ChatInterface = ({ onBack, projectId }) => {
         <div style={styles.sidebarContent}>
           <div style={styles.sidebarHeader}>
             <h2 style={styles.sidebarTitle}>Project knowledge</h2>
-            <button style={styles.addButton}>Add Content</button>
           </div>
 
           <div style={styles.usageSection}>
@@ -350,7 +479,7 @@ const ChatInterface = ({ onBack, projectId }) => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
         </div>
       </div>
     </div>
