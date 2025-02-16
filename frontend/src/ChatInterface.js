@@ -413,7 +413,7 @@ const ChatInterface = ({ projectId }) => {
 
       await processFileChunks(
         data["transcript_content"][1],
-        videoTranscript,
+        originalVideoFileUrl,
         true
       );
 
@@ -436,7 +436,7 @@ const ChatInterface = ({ projectId }) => {
 
       await processFileChunks(
         data["transcript_content"][0],
-        videoTranscriptTimestamp,
+        originalVideoFileUrl,
         true
       );
 
