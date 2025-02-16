@@ -13,22 +13,28 @@ def create_embedding():
     """Add embedding for a chunk of text."""
     try:
         data = request.json
-        if not data or 'chunk_url' not in data or 'chunk_text' not in data or 'original_file_url' not in data:
+
+        # Check all required fields: chunk_url, chunk_text, original_file_url, user_name
+        required_fields = ["chunk_url", "chunk_text", "original_file_url", "user_name"]
+        missing_fields = [f for f in required_fields if f not in data or not data[f]]
+
+        if missing_fields:
             return jsonify({
                 "status": "error",
-                "message": "Missing required fields: chunk_url, chunk_text, and original_file_url"
+                "message": f"Missing required fields: {', '.join(missing_fields)}"
             }), 400
-            
-        # Add embeddings (or get existing)
+
+        # Call add_embeddings with user_name included
         result = add_embeddings(
             chunk_url=data['chunk_url'],
             chunk_text=data['chunk_text'],
-            original_file_url=data['original_file_url']
+            original_file_url=data['original_file_url'],
+            user_name=data['user_name']
         )
-        
+
         # Return 200 status regardless of whether chunk was new or existing
         return jsonify(result), 200
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",

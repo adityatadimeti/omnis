@@ -317,17 +317,47 @@ const ChatInterface = ({ projectId }) => {
       const chunkUrl = await getDownloadURL(chunkRef);
 
       // Send chunk to our backend for embedding
-      await fetch('http://localhost:5010/add_embedding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Align naming for ESLint clarity:
-          chunk_url: chunkUrl,
-          chunk_text: chunks[i],
-          original_file_url: originalFileUrl,
-          user_name: user?.displayName || "UnknownUser"
-        }),
-      });
+      // await fetch('http://localhost:5010/add_embedding', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({
+      //     // Align naming for ESLint clarity:
+      //     chunk_url: chunkUrl,
+      //     chunk_text: chunks[i],
+      //     original_file_url: originalFileUrl,
+      //     user_name: user?.displayName || "UnknownUser"
+      //   }),
+      // });
+
+      try {
+        const response = await fetch("http://localhost:5010/add_embedding", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chunk_url: chunkUrl,
+            chunk_text: chunks[i],
+            original_file_url: originalFileUrl,
+            user_name: user?.displayName || "UnknownUser"
+          }),
+        });
+      
+        // Check for non-2xx status (i.e. not "OK")
+        if (!response.ok) {
+          // Attempt to parse error text from server
+          const errorText = await response.text();
+          console.error(
+            `Server responded with an error. Status: ${response.status} - ${errorText}`
+          );
+        } else {
+          // If everything is fine, parse the JSON response
+          const data = await response.json();
+          console.log("Success from server:", data);
+        }
+      } catch (err) {
+        // Catch any fetch/JS-level errors (like connection failure, etc.)
+        console.error("Error sending chunk to backend:", err);
+      }
+      
     }
   };
 

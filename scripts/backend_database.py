@@ -22,27 +22,30 @@ def setup_database_connection():
     connection_string = f"{hostname}:{port}/{namespace}"
     return iris.connect(connection_string, username, password)
 
-def ensure_table_exists(cursor, table_name):
-    try:
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {table_name}.classes (
-                chunk_url VARCHAR(1000),
-                chunk_text VARCHAR(10000),
-                embedding VECTOR(DOUBLE, 1536),
-                original_file_url VARCHAR(1000)
-            )
-        """)
-        return True
-    except Exception as e:
-        print(f"Table creation error: {str(e)}")
-        raise e
+def ensure_table_exists(cursor, user_name):
+    # Replace spaces (and possibly other special chars) with underscores
+    safe_user_name = user_name.strip().replace(" ", "_")
 
-def check_chunk_exists(cursor, table_name, chunk_url):
+    # Then create the schema.table:
     cursor.execute(f"""
-        SELECT COUNT(*) FROM {table_name}.classes
+        CREATE TABLE IF NOT EXISTS {safe_user_name}.classes (
+            chunk_url VARCHAR(1000),
+            chunk_text VARCHAR(10000),
+            embedding VECTOR(DOUBLE, 1536),
+            original_file_url VARCHAR(1000)
+        )
+    """)
+    return True
+
+
+def check_chunk_exists(cursor, user_name, chunk_url):
+    safe_user_name = user_name.strip().replace(" ", "_")
+    cursor.execute(f"""
+        SELECT COUNT(*) FROM {safe_user_name}.classes
         WHERE chunk_url = ?
     """, [chunk_url])
     return cursor.fetchone()[0] > 0
+
 
 def add_embeddings(chunk_url, chunk_text, original_file_url, user_name):
     try:
