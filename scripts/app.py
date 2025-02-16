@@ -255,6 +255,9 @@ def list_classes():
         for (table_name,) in rows:
             # e.g. table_name might be 'CS194W_embeddings'
             # We'll remove '_embeddings' suffix to get 'CS194W'.
+            print(table_name)
+            if "classes" in table_name:
+                continue
             if table_name.endswith("_embeddings"):
                 raw_class_name = table_name.replace("_embeddings", "")
             else:

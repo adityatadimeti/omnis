@@ -224,7 +224,7 @@ const Dashboard = () => {
     const fetchClasses = async () => {
       try {
         // IRIS may require spaces replaced with underscores
-        const safeUserName = user.displayName ? user.displayName.replace(/\s+/g, '_') : 'UnknownUser';
+        const safeUserName = user.displayName ? user.displayName.replace(/\s+/g, "") : 'UnknownUser';
 
         const response = await fetch(`http://localhost:5010/list_classes?user_name=${safeUserName}`);
         if (!response.ok) {
@@ -284,7 +284,7 @@ const Dashboard = () => {
         ...prev,
         {
           id: Date.now().toString(),
-          name: newClassName.replace(/\s+/g, ''), // Or however you want
+          name: newClassName.replace(/\s+/g, ""), // Or however you want
           description: `Class: ${newClassName}`,
         },
       ]);
