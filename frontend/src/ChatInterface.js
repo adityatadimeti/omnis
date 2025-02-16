@@ -578,6 +578,17 @@ const ChatInterface = ({ projectId }) => {
           const data3 = await response3.json();
 
 
+          const response4 = await fetch("http://localhost:5010/get_video_timestamp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transcript_content: data['chunk_text'],
+              file_type: data['file_type'], 
+              question: message
+            }),
+          });
+
+          const data4 = await response4.json();
 
           // Update local state with the returned results
           setSearchResults(data3['answer']);
