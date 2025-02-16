@@ -6,7 +6,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 
 // Import useAuth so we can access the current user
@@ -200,7 +205,7 @@ const ChatInterface = ({ projectId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [documents, setDocuments] = useState([]);
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadStatus, setUploadStatus] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
 
@@ -290,12 +295,19 @@ const ChatInterface = ({ projectId }) => {
    * Splits the text file into chunks, uploads each chunk to Firebase Storage,
    * and sends each chunk for embedding to the backend.
    */
-  const processFileChunks = async (file, originalFileUrl) => {
-    // Read the entire file text
-    const text = await file.text();
+  const processFileChunks = async (file, originalFileUrl, isTextOrNot) => {
+    let text = "";
+    if (isTextOrNot) {
+      text = file;
+    } else {
+      text = await file.text();
+    }
+
     const chunkSize = 1000;
-    const words = text.split(/\s+/);
     const chunks = [];
+
+    // Split text into chunks
+    const words = text.split(/\s+/);
 
     // Break text into 1000-word chunks
     for (let i = 0; i < words.length; i += chunkSize) {
@@ -308,11 +320,14 @@ const ChatInterface = ({ projectId }) => {
     for (let i = 0; i < chunks.length; i++) {
       setUploadStatus(`Processing chunk ${i + 1} of ${chunks.length}`);
 
+      // Create and upload chunk to Firebase
       const chunkId = uuidv4();
       const chunkRef = storageRef(storage, `chunks/${chunkId}.txt`);
       const chunkBlob = new Blob([chunks[i]], { type: "text/plain" });
       await uploadBytes(chunkRef, chunkBlob);
       const chunkUrl = await getDownloadURL(chunkRef);
+      console.log("chunk url");
+      console.log(chunkUrl);
 
       // Send chunk to our backend for embedding
       try {
@@ -320,7 +335,7 @@ const ChatInterface = ({ projectId }) => {
         const safeUserName = user?.displayName
           ? user.displayName.replace(/\s+/g, "")
           : "UnknownUser";
-      
+
         const response = await fetch("http://localhost:5010/add_embedding", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -357,46 +372,133 @@ const ChatInterface = ({ projectId }) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    try {
-      setIsLoading(true);
-      setUploadStatus("Starting upload...");
-
+    //check file ends in mp3
+    if (file["name"].split(".").pop() === "mp4") {
+      // 1. Upload original video file to Firebase
       const storage = getStorage();
       const fileId = uuidv4();
       const fileExtension = file.name.split(".").pop();
-
-      // Upload the original file to Firebase Storage
       const originalFileRef = storageRef(
         storage,
         `documents/${fileId}.${fileExtension}`
       );
       await uploadBytes(originalFileRef, file);
-      const originalFileUrl = await getDownloadURL(originalFileRef);
+      const originalVideoFileUrl = await getDownloadURL(originalFileRef);
+      console.log("original video file url");
+      console.log(originalVideoFileUrl);
 
-      // Chunk the file and process each chunk
-      await processFileChunks(file, originalFileUrl);
+      const formData = new FormData();
+      formData.append("video", file);
 
-      // Keep track of uploaded files in state
+      const response = await fetch("http://localhost:5010/process_video", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+
+      const video_transcript_id = uuidv4();
+      const originalVideoTranscriptFile = storageRef(
+        storage,
+        `documents/${video_transcript_id}.txt`
+      );
+
+      const chunkBlob = new Blob([data["transcript_content"][1]], {
+        type: "text/plain",
+      });
+
+      await uploadBytes(originalVideoTranscriptFile, chunkBlob);
+      const videoTranscript = await getDownloadURL(originalVideoTranscriptFile);
+      console.log("original full transcript");
+      console.log(videoTranscript);
+
+      await processFileChunks(
+        data["transcript_content"][1],
+        videoTranscript,
+        true
+      );
+
+      const video_transcript_with_timestamps_id = uuidv4();
+      const originalVideoTranscriptTranscriptFile = storageRef(
+        storage,
+        `documents/${video_transcript_with_timestamps_id}.txt`
+      );
+
+      const chunkBlob2 = new Blob([data["transcript_content"][0]], {
+        type: "text/plain",
+      });
+
+      await uploadBytes(originalVideoTranscriptTranscriptFile, chunkBlob2);
+      const videoTranscriptTimestamp = await getDownloadURL(
+        originalVideoTranscriptTranscriptFile
+      );
+      console.log("original full transcript with timestamp");
+      console.log(videoTranscriptTimestamp);
+
+      await processFileChunks(
+        data["transcript_content"][0],
+        videoTranscriptTimestamp,
+        true
+      );
+
+      // 3. Update UI with new document
       setDocuments((prev) => [
         ...prev,
         {
-          id: fileId,
+          id: video_transcript_id,
           name: file.name,
-          type: fileExtension.toUpperCase(),
+          type: "mp4".toUpperCase(),
           date: "Just now",
           size: `${(file.size / 1024).toFixed(1)} KB`,
-          url: originalFileUrl,
+          url: videoTranscript,
         },
       ]);
 
       setUploadStatus("Upload complete!");
-    } catch (error) {
-      console.error("Error processing file:", error);
-      setUploadStatus("Error uploading file");
-    } finally {
       setIsLoading(false);
-      // Clear the status message after a short delay
       setTimeout(() => setUploadStatus(""), 3000);
+
+      return;
+    } else {
+      try {
+        setIsLoading(true);
+        setUploadStatus("Starting upload...");
+
+        // 1. Upload original file to Firebase
+        const storage = getStorage();
+        const fileId = uuidv4();
+        const fileExtension = file.name.split(".").pop();
+        const originalFileRef = storageRef(
+          storage,
+          `documents/${fileId}.${fileExtension}`
+        );
+
+        await uploadBytes(originalFileRef, file);
+        const originalFileUrl = await getDownloadURL(originalFileRef);
+
+        // 2. Process chunks and store embeddings
+        await processFileChunks(file, originalFileUrl);
+
+        // 3. Update UI with new document
+        setDocuments((prev) => [
+          ...prev,
+          {
+            id: fileId,
+            name: file.name,
+            type: fileExtension.toUpperCase(),
+            date: "Just now",
+            size: `${(file.size / 1024).toFixed(1)} KB`,
+            url: originalFileUrl,
+          },
+        ]);
+
+        setUploadStatus("Upload complete!");
+      } catch (error) {
+        console.error("Error processing file:", error);
+        setUploadStatus("Error uploading file");
+      } finally {
+        setIsLoading(false);
+        setTimeout(() => setUploadStatus(""), 3000); // Clear status after 3 seconds
+      }
     }
   };
 
@@ -407,7 +509,7 @@ const ChatInterface = ({ projectId }) => {
    */
   const handleSearch = async () => {
     if (!message.trim()) return;
-  
+
     setIsLoading(true);
     try {
       const response = await fetch("http://localhost:5010/search", {
@@ -419,7 +521,7 @@ const ChatInterface = ({ projectId }) => {
           user_name: user?.displayName || "UnknownUser",
         }),
       });
-  
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error(
@@ -429,11 +531,11 @@ const ChatInterface = ({ projectId }) => {
         const data = await response.json();
         // 1) Log the entire server response
         console.log("Search data from server:", data);
-  
+
         if (data.status === "success") {
           // 2) Also log just the results for clarity
           console.log("Search results:", data.results);
-  
+
           // Update local state with the returned results
           setSearchResults(data.results);
         } else {
@@ -446,7 +548,6 @@ const ChatInterface = ({ projectId }) => {
       setIsLoading(false);
     }
   };
-  
 
   // Render the main component
   return (
@@ -503,12 +604,12 @@ const ChatInterface = ({ projectId }) => {
               {/* Render chunk text or any other fields */}
               <div>{result.chunk_text}</div>
               <div style={styles.documentMeta}>
-                Score: {result.score.toFixed(2)} | Source: {result.original_file_url}
+                Score: {result.score.toFixed(2)} | Source:{" "}
+                {result.original_file_url}
               </div>
             </div>
           ))}
         </div>
-
 
         {/* User input for search and file upload */}
         <div style={styles.inputSection}>
@@ -547,7 +648,9 @@ const ChatInterface = ({ projectId }) => {
             </button>
           </div>
           {/* Upload status or error messages */}
-          {uploadStatus && <div style={styles.uploadStatus}>{uploadStatus}</div>}
+          {uploadStatus && (
+            <div style={styles.uploadStatus}>{uploadStatus}</div>
+          )}
         </div>
       </div>
 

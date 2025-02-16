@@ -15,6 +15,7 @@ class AudioHandler:
             filepath = str(filepath)
         self.fp = str(filepath) if isinstance(filepath, Path) else filepath
     
+    
     def _split_audio(self, chunk_length_ms=6000) -> list:
         print(f"Loading audio file: {self.fp}")
         audio = AudioSegment.from_file(self.fp)
@@ -29,6 +30,11 @@ class AudioHandler:
         for i, start in tqdm(enumerate(range(0, len(audio), chunk_length_ms))):
             end = start + chunk_length_ms
             chunk = audio[start:end]
+
+            if len(chunk) < 100:  # Check for chunks less than 0.1 second
+                print(f"Skipping chunk {i} as it is too short: {len(chunk)} ms")
+                continue
+
             chunk_path = os.path.join(temp_dir, f"chunk_{i}.wav")
             chunk.export(chunk_path, format="wav")
             chunks.append((i, start, end, chunk_path))
@@ -135,10 +141,9 @@ class AudioHandler:
                     pass
 
 
-if __name__ == "__main__":
-
-    fp = './audio_files/Xanadu 12.mp3'
-    if fp[-4:] == ".mp3": 
-        ah = AudioHandler(fp)
-        fp = ah.process_audio()
-        print("transcript(s) saved to: ", fp)
+# if __name__ == "__main__":
+#     fp = './audio_files/videoplayback.mp4'
+#     if fp[-4:] == ".mp4": 
+#         ah = AudioHandler(fp)
+#         fp = ah.process_audio()
+#         print("transcript(s) saved to: ", fp)

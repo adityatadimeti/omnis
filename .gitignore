@@ -1,3 +1,7 @@
 frontend/src/firebaseConfig.js
 .env
 audio_files/
+frontend/node_modules/
+frontend/package-lock.json
+scripts/omnis_virtual_env/
+scripts/temp/
