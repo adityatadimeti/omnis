@@ -10,32 +10,23 @@ CORS(app)
 
 @app.route('/add_embedding', methods=['POST'])
 def create_embedding():
-    """Add embedding for an uploaded file if not already processed."""
+    """Add embedding for a chunk of text."""
     try:
-        if 'file' not in request.files:
+        data = request.json
+        if not data or 'chunk_url' not in data or 'chunk_text' not in data or 'original_file_url' not in data:
             return jsonify({
                 "status": "error",
-                "message": "No file part in the request"
+                "message": "Missing required fields: chunk_url, chunk_text, and original_file_url"
             }), 400
-            
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({
-                "status": "error",
-                "message": "No file selected"
-            }), 400
-
-        # Read file content
-        file_content = file.read().decode('utf-8')
-        file_url = file.filename
             
         # Add embeddings (or get existing)
         result = add_embeddings(
-            file_url=file_url,
-            file_text=file_content
+            chunk_url=data['chunk_url'],
+            chunk_text=data['chunk_text'],
+            original_file_url=data['original_file_url']
         )
         
-        # Return 200 status regardless of whether file was new or existing
+        # Return 200 status regardless of whether chunk was new or existing
         return jsonify(result), 200
         
     except Exception as e:
@@ -46,7 +37,7 @@ def create_embedding():
 
 @app.route('/search', methods=['POST'])
 def search():
-    """Search across all files for relevant content."""
+    """Search for similar content across all chunks."""
     try:
         data = request.json
         if not data or 'query' not in data:
@@ -69,5 +60,6 @@ def search():
             "status": "error",
             "message": str(e)
         }), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5010)

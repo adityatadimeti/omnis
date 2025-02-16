@@ -16,7 +16,6 @@ def get_table_name_from_url(file_url):
     clean_name = re.sub(r'[^a-zA-Z0-9]', '_', file_name)
     if not clean_name[0].isalpha():
         clean_name = 'f_' + clean_name
-    # Change from USER.{clean_name} to Sample.{clean_name}
     return f"Sample.{clean_name}"
 
 def check_table_exists(cursor, table_name):
@@ -24,7 +23,7 @@ def check_table_exists(cursor, table_name):
     try:
         cursor.execute(f"""
             SELECT COUNT(*) as count, 
-                   COUNT(file_embedding) as vector_count 
+                   COUNT(embedding) as vector_count 
             FROM {table_name}
         """)
         result = cursor.fetchone()
@@ -53,51 +52,57 @@ def setup_database_connection():
     connection_string = f"{hostname}:{port}/{namespace}"
     return iris.connect(connection_string, username, password)
 
-def add_embeddings(file_url, file_text):
-    """Add a single file's embeddings to the database if not already present."""
+def add_embeddings(chunk_url, chunk_text, original_file_url):
+    """Add a single chunk's embeddings to the database if not already present."""
     try:
         # Setup
         setup_openai_key()
         conn = setup_database_connection()
         cursor = conn.cursor()
 
-        # Get table name from file URL
-        table_name = get_table_name_from_url(file_url)
-
-        # Check if table already exists with embeddings
-        if check_table_exists(cursor, table_name):
-            return {
-                "status": "success",
-                "message": "File already processed",
-                "table_name": table_name,
-                "already_exists": True
-            }
+        # Get table name from original file URL
+        table_name = get_table_name_from_url(original_file_url)
 
         # Create new embeddings
         embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small")
-        embedding = embeddings_model.embed_documents([file_text])[0]
+        embedding = embeddings_model.embed_documents([chunk_text])[0]
         
-        # Create table and insert data
+        # Create table if it doesn't exist (note: we can have multiple chunks per table)
         try:
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-        except:
-            pass
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    chunk_url VARCHAR(1000),
+                    chunk_text VARCHAR(10000),
+                    embedding VECTOR(DOUBLE, 1536),
+                    original_file_url VARCHAR(1000)
+                )
+            """)
+        except Exception as e:
+            print(f"Table creation error: {str(e)}")
+            raise e
 
+        # Check if this chunk already exists
         cursor.execute(f"""
-            CREATE TABLE {table_name} (
-                file_url VARCHAR(1000),
-                file_text VARCHAR(10000),
-                file_embedding VECTOR(DOUBLE, 1536)
-            )
-        """)
+            SELECT COUNT(*) FROM {table_name}
+            WHERE chunk_url = ?
+        """, [chunk_url])
         
+        if cursor.fetchone()[0] > 0:
+            return {
+                "status": "success",
+                "message": "Chunk already processed",
+                "table_name": table_name,
+                "already_exists": True
+            }
+        
+        # Insert new chunk
         sql = f"""
             INSERT INTO {table_name}
-            (file_url, file_text, file_embedding)
-            VALUES (?, ?, TO_VECTOR(?))
+            (chunk_url, chunk_text, embedding, original_file_url)
+            VALUES (?, ?, TO_VECTOR(?), ?)
         """
         
-        cursor.execute(sql, [file_url, file_text, str(embedding)])
+        cursor.execute(sql, [chunk_url, chunk_text, str(embedding), original_file_url])
         conn.commit()
         
         return {
@@ -144,8 +149,8 @@ def search_files(search_phrase, num_results=3):
             try:
                 # Search within this table
                 sql = f"""
-                    SELECT file_url, file_text, 
-                           VECTOR_DOT_PRODUCT(file_embedding, TO_VECTOR(?)) as similarity_score
+                    SELECT chunk_url, chunk_text, original_file_url,
+                           VECTOR_DOT_PRODUCT(embedding, TO_VECTOR(?)) as similarity_score
                     FROM {full_table_name}
                 """
                 cursor.execute(sql, [str(search_vector)])
@@ -153,8 +158,13 @@ def search_files(search_phrase, num_results=3):
                 
                 # Add results to combined list
                 all_results.extend([
-                    {"url": url, "text": text, "score": score}
-                    for url, text, score in table_results
+                    {
+                        "chunk_url": chunk_url,
+                        "chunk_text": chunk_text,
+                        "original_file_url": original_file_url,
+                        "score": score
+                    }
+                    for chunk_url, chunk_text, original_file_url, score in table_results
                 ])
             except Exception as e:
                 print(f"Error searching table {full_table_name}: {str(e)}")
