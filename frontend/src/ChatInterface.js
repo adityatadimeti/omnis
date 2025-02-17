@@ -1,10 +1,5 @@
-// ChatInterface.js
-
-// This component provides a chat-style interface for uploading files,
-// chunking them, embedding them, and then searching across them.
-
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom"; 
 import { Send, Upload, ChevronLeft, MoreVertical, Share } from "lucide-react";
 import {
   getStorage,
@@ -16,6 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // Import useAuth so we can access the current user
 import { useAuth } from "./AuthContext";
+
 
 // Base styling object for major layout parts
 const baseStyles = {
@@ -54,7 +50,7 @@ const baseStyles = {
     color: "white",
   },
   backText: {
-    fontSize: "14px",
+    fontSize: "14px", 
     color: "white",
   },
   projectInfo: {
@@ -194,16 +190,21 @@ const baseStyles = {
 };
 
 const ChatInterface = ({ projectId }) => {
+
+  // State for the chat conversation
+  const [chatHistory, setChatHistory] = useState([]);
   // Use React Router's navigation
   const navigate = useNavigate();
 
   // Get the currently logged-in user from AuthContext
   const { user } = useAuth();
+  const { className } = useParams(); 
 
   // Local state variables
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [resourceInfo, setResourceInfo] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [uploadStatus, setUploadStatus] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -295,7 +296,7 @@ const ChatInterface = ({ projectId }) => {
    * Splits the text file into chunks, uploads each chunk to Firebase Storage,
    * and sends each chunk for embedding to the backend.
    */
-  const processFileChunks = async (file, originalFileUrl, isTextOrNot) => {
+  const processFileChunks = async (file, originalFileUrl, isTextOrNot, fileType, originalFileName) => {
     let text = "";
     if (isTextOrNot) {
       text = file;
@@ -344,6 +345,8 @@ const ChatInterface = ({ projectId }) => {
             chunk_text: chunks[i],
             original_file_url: originalFileUrl,
             user_name: safeUserName, // use the space-stripped username
+            file_type: fileType,
+            file_name: originalFileName,
           }),
         });
 
@@ -396,26 +399,29 @@ const ChatInterface = ({ projectId }) => {
       });
       const data = await response.json();
 
-      const video_transcript_id = uuidv4();
-      const originalVideoTranscriptFile = storageRef(
-        storage,
-        `documents/${video_transcript_id}.txt`
-      );
+      // const video_transcript_id = uuidv4();
+      // const originalVideoTranscriptFile = storageRef(
+      //   storage,
+      //   `documents/${video_transcript_id}.txt`
+      // );
 
-      const chunkBlob = new Blob([data["transcript_content"][1]], {
-        type: "text/plain",
-      });
+      // const chunkBlob = new Blob([data["transcript_content"][1]], {
+      //   type: "text/plain",
+      // });
 
-      await uploadBytes(originalVideoTranscriptFile, chunkBlob);
-      const videoTranscript = await getDownloadURL(originalVideoTranscriptFile);
-      console.log("original full transcript");
-      console.log(videoTranscript);
+      // await uploadBytes(originalVideoTranscriptFile, chunkBlob);
+      // const videoTranscript = await getDownloadURL(originalVideoTranscriptFile);
+      // console.log("original full transcript");
+      // console.log(videoTranscript);
 
-      await processFileChunks(
-        data["transcript_content"][1],
-        originalVideoFileUrl,
-        true
-      );
+      // await processFileChunks(
+      //   data["transcript_content"][1],
+      //   originalVideoFileUrl,
+      //   true,
+      //   "video",
+      //   file["name"].split(".")[0]
+
+      // );
 
       const video_transcript_with_timestamps_id = uuidv4();
       const originalVideoTranscriptTranscriptFile = storageRef(
@@ -437,19 +443,21 @@ const ChatInterface = ({ projectId }) => {
       await processFileChunks(
         data["transcript_content"][0],
         originalVideoFileUrl,
-        true
+        true,
+        "video",
+        file["name"].split(".")[0]
       );
 
       // 3. Update UI with new document
       setDocuments((prev) => [
         ...prev,
         {
-          id: video_transcript_id,
+          id: video_transcript_with_timestamps_id,
           name: file.name,
           type: "mp4".toUpperCase(),
           date: "Just now",
           size: `${(file.size / 1024).toFixed(1)} KB`,
-          url: videoTranscript,
+          url: videoTranscriptTimestamp,
         },
       ]);
 
@@ -476,7 +484,7 @@ const ChatInterface = ({ projectId }) => {
         const originalFileUrl = await getDownloadURL(originalFileRef);
 
         // 2. Process chunks and store embeddings
-        await processFileChunks(file, originalFileUrl);
+        await processFileChunks(file, originalFileUrl, false, "text",  file["name"].split(".")[0]);
 
         // 3. Update UI with new document
         setDocuments((prev) => [
@@ -502,6 +510,12 @@ const ChatInterface = ({ projectId }) => {
     }
   };
 
+  const goToVideoPage = (firebaseVideoUrl, timestamp) => {
+    navigate(
+      `/video?src=${encodeURIComponent(firebaseVideoUrl)}&t=${timestamp}`
+    );
+  };
+
   /**
    * handleSearch
    * Sends the user's query to the backend search endpoint
@@ -509,6 +523,11 @@ const ChatInterface = ({ projectId }) => {
    */
   const handleSearch = async () => {
     if (!message.trim()) return;
+
+    setChatHistory((prev) => [
+      ...prev,
+      { role: "user", message: message },
+    ]);
 
     setIsLoading(true);
     try {
@@ -528,18 +547,67 @@ const ChatInterface = ({ projectId }) => {
           `Server responded with an error. Status: ${response.status} - ${errorText}`
         );
       } else {
-        const data = await response.json();
+        const search_data = await response.json();
         // 1) Log the entire server response
-        console.log("Search data from server:", data);
+        console.log("Search data from server:", search_data);
 
-        if (data.status === "success") {
+        if (search_data.status === "success") {
           // 2) Also log just the results for clarity
-          console.log("Search results:", data.results);
+          console.log("Search results:", search_data.results);
+
+          //feed sanjay code
+          const response = await fetch("http://localhost:5010/run_identification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: message,
+              top_k_queries: search_data.results.map(obj => obj.chunk_text),
+              top_k_types: search_data.results.map(obj => obj.file_type)
+            }),
+          });
+          const data = await response.json();
+
+          const response2 = await fetch("http://localhost:5010/run_generation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: message,
+              top_k_ids: data['top_k_ids']
+            }),
+          });
+          const data2 = await response2.json();
+
+
+          const response3 = await fetch("http://localhost:5010/postprocess_generation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              generated_content: data2['answer'],
+              top_k_urls: search_data.results.map(obj => obj.original_file_url),
+              top_k_names: search_data.results.map(obj => obj.file_name),
+            }),
+          });
+          const data3 = await response3.json();
+
+
+          const response4 = await fetch("http://localhost:5010/get_video_timestamp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transcript_content_chunks: search_data.results.map(obj => obj.chunk_text),
+              file_types: search_data.results.map(obj => obj.file_type),
+              file_urls: search_data.results.map(obj => obj.original_file_url),
+              file_names: search_data.results.map(obj => obj.file_name),
+              top_k_ids: data['top_k_ids'],
+            }),
+          });
+          const data4 = await response4.json();
+          setResourceInfo(data4['timestamp']);
 
           // Update local state with the returned results
-          setSearchResults(data.results);
+          setSearchResults(data3['answer']);
         } else {
-          console.error("Search error:", data.message);
+          console.error("Search error:", search_data.message);
         }
       }
     } catch (error) {
@@ -591,25 +659,55 @@ const ChatInterface = ({ projectId }) => {
 
           <div style={styles.projectInfo}>
             <h1 style={styles.projectTitle}>
-              <span style={styles.projectName}>CS 194W</span>
+              <span style={styles.projectName}>{className}</span>
             </h1>
-            <p style={styles.projectDescription}>CS 194W final project.</p>
+            <p style={styles.projectDescription}>
+              {className} home page.
+            </p>
           </div>
         </header>
 
-        {/* Search results section */}
-        <div style={styles.chatArea}>
-          {searchResults.map((result, index) => (
+      {/* Search results section */}
+      <div style={styles.chatArea}>
+        {console.log("searchResults:", searchResults)}
+
+        {/* If searchResults is a string, just display it.
+            Otherwise, assume it's an array of results. */}
+        {typeof searchResults === "string" ? (
+          <>
+          <div style={styles.searchResult}>{searchResults}
+            <br/>
+            <br/>
+            References:
+          {resourceInfo && <ul>
+            {resourceInfo.map(([url, name, timestamp]) => (
+              <li key={url}>
+                <a href={url} target="_blank" rel="noopener noreferrer" >
+                  {name}
+                </a>
+              </li>
+            ))}
+          </ul>}
+
+          </div>
+
+          
+          </>
+          
+        ) : (
+          searchResults.map((result, index) => (
             <div key={index} style={styles.searchResult}>
-              {/* Render chunk text or any other fields */}
-              <div>{result.chunk_text}</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>
+                  {result.chunk_text}
+              </div>
               <div style={styles.documentMeta}>
-                Score: {result.score.toFixed(2)} | Source:{" "}
-                {result.original_file_url}
+                Score: {result.score.toFixed(2)} | Source: {result.original_file_url}
               </div>
             </div>
-          ))}
-        </div>
+          ))
+        )}
+      </div>
+
 
         {/* User input for search and file upload */}
         <div style={styles.inputSection}>
@@ -692,3 +790,5 @@ const ChatInterface = ({ projectId }) => {
 };
 
 export default ChatInterface;
+
+

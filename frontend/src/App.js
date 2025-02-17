@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import Dashboard from './Dashboard';
 import ChatInterface from './ChatInterface';
+import FirebaseVideoPlayer from './FirebaseVideoPlayer';
+import VideoPage from './VideoPage';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useAuth();
@@ -16,7 +18,10 @@ function App() {
     <Router>
       <AuthProvider>
         <Routes>
+          {/* Public routes */}
           <Route path="/login" element={<Login />} />
+
+          {/* Protected routes */}
           <Route
             path="/dashboard"
             element={
@@ -25,14 +30,18 @@ function App() {
               </PrivateRoute>
             }
           />
+
+          {/* Class name (or ID) route parameter */}
           <Route
-            path="/class/:classId"
+            path="/class/:className"
             element={
               <PrivateRoute>
                 <ChatInterface />
               </PrivateRoute>
             }
           />
+          <Route path="/video" element={<VideoPage />} />
+          {/* Default route goes to dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </AuthProvider>
